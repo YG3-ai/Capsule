@@ -1,0 +1,28 @@
+{
+  "name": "capsule-app",
+  "version": "1.0.0",
+  "description": "Native wrapper for a Capsule game",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir",
+    "dist:mac": "electron-builder -m",
+    "dist:win": "electron-builder -w",
+    "dist:linux": "electron-builder -l",
+    "dist:all": "electron-builder -mwl"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.capsule.game",
+    "productName": "Capsule Game",
+    "files": ["**/*", "!**/*.md", "!editor.html", "!scene.js.map"],
+    "directories": { "output": "dist" },
+    "mac": { "target": "dmg", "category": "public.app-category.games", "identity": null },
+    "win": { "target": "portable" },
+    "linux": { "target": "AppImage", "category": "Game" }
+  }
+}

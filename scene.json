@@ -1,0 +1,112 @@
+{
+  "player": {
+    "position": [
+      0,
+      0.8,
+      0
+    ],
+    "color": "#ff5577"
+  },
+  "props": [
+    {
+      "id": "crate-a",
+      "kind": "box",
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": "#b07a3c",
+      "position": [
+        3,
+        0.5,
+        -2
+      ],
+      "rotation": [
+        0,
+        25,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "id": "crate-b",
+      "kind": "box",
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": "#9c6a32",
+      "position": [
+        4.1,
+        0.5,
+        -2.6
+      ],
+      "rotation": [
+        0,
+        -12,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "id": "pillar",
+      "kind": "cylinder",
+      "size": [
+        0.5,
+        0.5,
+        3
+      ],
+      "color": "#6a7b8a",
+      "position": [
+        -4,
+        1.5,
+        -3
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "id": "orb",
+      "kind": "sphere",
+      "size": [
+        0.7,
+        0,
+        0
+      ],
+      "color": "#4fd6c2",
+      "position": [
+        -1.933,
+        3.909,
+        5.175
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    }
+  ]
+}

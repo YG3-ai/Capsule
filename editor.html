@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Capsule — Editor</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #15151b; }
+  canvas { display: block; }
+  * { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+  #toolbar {
+    position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; padding: 6px; z-index: 10;
+    background: rgba(20,20,28,0.85); border: 1px solid #333; border-radius: 8px;
+    backdrop-filter: blur(6px);
+  }
+  #toolbar button {
+    font-size: 12px; color: #ddd; background: #2a2a36; border: 1px solid #3a3a48;
+    padding: 6px 10px; border-radius: 5px; cursor: pointer;
+  }
+  #toolbar button:hover { background: #353544; }
+  #toolbar button.active { background: #ff5577; border-color: #ff5577; color: #fff; }
+  #toolbar .sep { width: 1px; background: #3a3a48; margin: 2px 2px; }
+  #toolbar #save { background: #2f7d4f; border-color: #2f7d4f; color: #fff; }
+  #toolbar #save:hover { background: #379459; }
+  #toolbar #save.dirty { box-shadow: 0 0 0 2px #ffd23f55; }
+
+  #panel {
+    position: fixed; top: 10px; left: 10px; z-index: 10; width: 200px;
+    background: rgba(20,20,28,0.85); border: 1px solid #333; border-radius: 8px;
+    backdrop-filter: blur(6px); overflow: hidden;
+  }
+  #panel h3 { margin: 0; padding: 8px 10px; font-size: 11px; color: #9aa; background: #22222c; }
+  #panel .item {
+    padding: 6px 10px; font-size: 12px; color: #cce; cursor: pointer;
+    border-top: 1px solid #2a2a34;
+  }
+  #panel .item:hover { background: #2a2a36; }
+  #panel .item.selected { background: #ff557722; color: #fff; }
+
+  #hud {
+    position: fixed; bottom: 10px; left: 10px; z-index: 10;
+    font-size: 12px; color: #cce; background: rgba(20,20,28,0.85);
+    border: 1px solid #333; border-radius: 8px; padding: 8px 10px;
+    white-space: pre; line-height: 1.5; backdrop-filter: blur(6px);
+  }
+  #drophint {
+    position: fixed; inset: 0; z-index: 20; display: none;
+    align-items: center; justify-content: center; pointer-events: none;
+    background: rgba(79,214,194,0.12); border: 3px dashed #4fd6c2;
+    font-size: 20px; color: #4fd6c2;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three":         "https://unpkg.com/three@0.171.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.171.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="toolbar">
+  <button id="mode-translate" class="active" title="Move (W)">Move</button>
+  <button id="mode-rotate" title="Rotate (E)">Rotate</button>
+  <button id="mode-scale" title="Scale (R)">Scale</button>
+  <div class="sep"></div>
+  <button id="add-box">+ Box</button>
+  <button id="add-sphere">+ Sphere</button>
+  <button id="add-cylinder">+ Pillar</button>
+  <div class="sep"></div>
+  <button id="duplicate" title="Duplicate (D)">Duplicate</button>
+  <button id="delete" title="Delete (Del)">Delete</button>
+  <div class="sep"></div>
+  <button id="open-folder" title="Link the capsule folder so saves & .glb imports write in place">Link Folder</button>
+  <button id="save" title="Save (Ctrl/Cmd+S)">Save scene.json</button>
+</div>
+
+<div id="panel">
+  <h3>OBJECTS</h3>
+  <div id="list"></div>
+</div>
+
+<div id="hud">click an object to select</div>
+<div id="drophint">drop a .glb / .gltf to add it</div>
+
+<script type="module">
+// === IMPORTS ===
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { loadScene, makeProp, createProp, loadModel, writeTransform } from './scene.js';
+
+// === RENDERER & SCENE ===
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x15151b);
+
+// === CAMERA ===
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(8, 7, 11);
+
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.target.set(0, 1, 0);
+orbit.enableDamping = true;
+
+// === LIGHTS ===
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444466, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(10, 15, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -20; sun.shadow.camera.right = 20;
+sun.shadow.camera.top = 20;   sun.shadow.camera.bottom = -20;
+scene.add(sun);
+
+// === WORLD ===
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(50, 50),
+  new THREE.MeshStandardMaterial({ color: 0x2a3a2a })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+scene.add(new THREE.GridHelper(50, 50, 0x444455, 0x2c2c38));
+
+// === EDITOR STATE ===
+let sceneData = { player: { position: [0, 0.8, 0], color: '#ff5577' }, props: [] };
+const editable = [];          // selectable meshes (props + player)
+let selected = null;
+let dirty = false;
+
+const hud = document.getElementById('hud');
+const list = document.getElementById('list');
+const saveBtn = document.getElementById('save');
+
+// Gizmo
+const gizmo = new TransformControls(camera, renderer.domElement);
+gizmo.addEventListener('dragging-changed', (e) => { orbit.enabled = !e.value; });
+gizmo.addEventListener('objectChange', () => { syncSelected(); markDirty(); });
+scene.add(gizmo.getHelper ? gizmo.getHelper() : gizmo);
+
+// === LOAD ===
+loadScene().then(async (data) => {
+  sceneData = data;
+  if (!sceneData.props) sceneData.props = [];
+
+  // Player as a movable, selectable object.
+  const playerData = sceneData.player || (sceneData.player = { position: [0, 0.8, 0], color: '#ff5577' });
+  const player = makeProp({ id: '(player)', kind: 'capsule', size: [0.4, 0.8, 0],
+    color: playerData.color, position: playerData.position, rotation: [0, 0, 0], scale: [1, 1, 1] });
+  player.userData.prop = playerData;     // writes go straight back to data.player
+  player.userData.isPlayer = true;
+  scene.add(player);
+  editable.push(player);
+
+  for (const prop of sceneData.props) {
+    const mesh = await createProp(prop);
+    scene.add(mesh);
+    editable.push(mesh);
+  }
+  refreshList();
+}).catch((err) => { hud.textContent = 'scene.json not loaded: ' + err.message; });
+
+// === SELECTION ===
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2();
+let downPos = null;
+
+renderer.domElement.addEventListener('pointerdown', (e) => { downPos = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!downPos) return;
+  const moved = Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]);
+  downPos = null;
+  if (moved > 4) return;                 // it was a drag, not a click
+  if (gizmo.dragging) return;
+  ptr.x = (e.clientX / window.innerWidth) * 2 - 1;
+  ptr.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  ray.setFromCamera(ptr, camera);
+  const hit = ray.intersectObjects(editable, true)[0];
+  // A GLB hit lands on a child mesh; walk up to the editable root we track.
+  let obj = hit ? hit.object : null;
+  while (obj && editable.indexOf(obj) === -1) obj = obj.parent;
+  select(obj || null);
+});
+
+function select(mesh) {
+  selected = mesh;
+  if (mesh) gizmo.attach(mesh); else gizmo.detach();
+  refreshList();
+  syncSelected();
+}
+
+function syncSelected() {
+  if (!selected) { hud.textContent = 'click an object to select'; return; }
+  const p = selected.userData.prop;
+  writeTransform(selected, p);
+  const id = selected.userData.isPlayer ? '(player)' : p.id;
+  hud.textContent =
+    `${id}\n` +
+    `pos  ${fmt(p.position)}\n` +
+    `rot° ${fmt(p.rotation)}\n` +
+    `scl  ${fmt(p.scale)}`;
+}
+
+const fmt = (a) => a ? a.map((n) => String(n).padStart(6)).join(' ') : '';
+
+// === OBJECT LIST ===
+function refreshList() {
+  list.innerHTML = '';
+  for (const mesh of editable) {
+    const div = document.createElement('div');
+    div.className = 'item' + (mesh === selected ? ' selected' : '');
+    div.textContent = mesh.userData.isPlayer ? '◆ (player)' : '▪ ' + mesh.userData.prop.id;
+    div.onclick = () => select(mesh);
+    list.appendChild(div);
+  }
+}
+
+// === TOOLBAR: MODES ===
+const modeBtns = {
+  translate: document.getElementById('mode-translate'),
+  rotate: document.getElementById('mode-rotate'),
+  scale: document.getElementById('mode-scale'),
+};
+function setMode(m) {
+  gizmo.setMode(m);
+  for (const k in modeBtns) modeBtns[k].classList.toggle('active', k === m);
+}
+modeBtns.translate.onclick = () => setMode('translate');
+modeBtns.rotate.onclick = () => setMode('rotate');
+modeBtns.scale.onclick = () => setMode('scale');
+
+// === TOOLBAR: ADD / DUPLICATE / DELETE ===
+let addCounter = 0;
+function addProp(kind, size) {
+  const id = `${kind}-${++addCounter}`;
+  const inFront = new THREE.Vector3();
+  camera.getWorldDirection(inFront);
+  const pos = orbit.target.clone().add(inFront.multiplyScalar(3)).setY(size[1] ? size[1] / 2 : 0.7);
+  const prop = { id, kind, size, color: '#c9c7d6',
+    position: [r(pos.x), r(pos.y), r(pos.z)], rotation: [0, 0, 0], scale: [1, 1, 1] };
+  sceneData.props.push(prop);
+  const mesh = makeProp(prop);
+  scene.add(mesh);
+  editable.push(mesh);
+  select(mesh);
+  markDirty();
+}
+const r = (n) => Math.round(n * 1000) / 1000;
+document.getElementById('add-box').onclick = () => addProp('box', [1, 1, 1]);
+document.getElementById('add-sphere').onclick = () => addProp('sphere', [0.6, 0, 0]);
+document.getElementById('add-cylinder').onclick = () => addProp('cylinder', [0.4, 0.4, 2.5]);
+
+function duplicateSelected() {
+  if (!selected || selected.userData.isPlayer) return;
+  const src = selected.userData.prop;
+  const prop = JSON.parse(JSON.stringify(src));
+  prop.id = src.id + '-copy';
+  prop.position = [prop.position[0] + 1, prop.position[1], prop.position[2]];
+  sceneData.props.push(prop);
+  const mesh = makeProp(prop);
+  scene.add(mesh);
+  editable.push(mesh);
+  select(mesh);
+  markDirty();
+}
+document.getElementById('duplicate').onclick = duplicateSelected;
+
+function deleteSelected() {
+  if (!selected || selected.userData.isPlayer) return;
+  const prop = selected.userData.prop;
+  sceneData.props = sceneData.props.filter((p) => p !== prop);
+  editable.splice(editable.indexOf(selected), 1);
+  scene.remove(selected);
+  selected.traverse((o) => {
+    if (!o.isMesh) return;
+    o.geometry.dispose();
+    (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose());
+  });
+  gizmo.detach();
+  selected = null;
+  refreshList();
+  syncSelected();
+  markDirty();
+}
+document.getElementById('delete').onclick = deleteSelected;
+
+// === FILE SYSTEM (File System Access API, with download fallback) ===
+// Linking the capsule folder lets saves and .glb imports write in place. Without it,
+// scene.json still saves (single-file picker / download) but GLB bytes can't be written.
+let dirHandle = null;
+let fileHandle = null;            // fallback single-file handle for scene.json
+const pendingAssets = [];         // { relPath, blob } waiting for a linked folder
+function markDirty() { dirty = true; saveBtn.classList.add('dirty'); }
+
+document.getElementById('open-folder').onclick = async () => {
+  if (!window.showDirectoryPicker) { flash('folder access needs a Chromium browser or Electron'); return; }
+  try {
+    dirHandle = await window.showDirectoryPicker({ id: 'capsule', mode: 'readwrite' });
+    await flushAssets();
+    flash(`folder linked ✓  (${pendingAssets.length ? 'assets pending' : 'ready'})`);
+  } catch (err) { if (err.name !== 'AbortError') flash('link failed: ' + err.message); }
+};
+
+// Write a file at a relative path inside the linked folder, creating subdirs as needed.
+async function writeFile(root, relPath, blob) {
+  const parts = relPath.split('/');
+  let dir = root;
+  for (let i = 0; i < parts.length - 1; i++) dir = await dir.getDirectoryHandle(parts[i], { create: true });
+  const fh = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+  const w = await fh.createWritable();
+  await w.write(blob);
+  await w.close();
+}
+
+async function flushAssets() {
+  if (!dirHandle) return;
+  for (const a of pendingAssets.splice(0)) await writeFile(dirHandle, a.relPath, a.blob);
+}
+
+async function save() {
+  syncSelected();
+  const json = JSON.stringify(sceneData, null, 2) + '\n';
+  try {
+    if (dirHandle) {
+      await flushAssets();
+      await writeFile(dirHandle, 'scene.json', new Blob([json], { type: 'application/json' }));
+    } else if (window.showSaveFilePicker) {
+      if (pendingAssets.length) flash('note: Link Folder to write the dropped .glb files');
+      if (!fileHandle) {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: 'scene.json',
+          types: [{ description: 'Capsule scene', accept: { 'application/json': ['.json'] } }],
+        });
+      }
+      const w = await fileHandle.createWritable();
+      await w.write(json);
+      await w.close();
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      a.download = 'scene.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    dirty = false;
+    saveBtn.classList.remove('dirty');
+    flash('saved ✓');
+  } catch (err) {
+    if (err.name !== 'AbortError') flash('save failed: ' + err.message);
+  }
+}
+saveBtn.onclick = save;
+
+function flash(msg) {
+  const prev = hud.textContent;
+  hud.textContent = msg;
+  setTimeout(() => { if (hud.textContent === msg) syncSelected(); }, 1200);
+}
+
+// === KEYBOARD ===
+addEventListener('keydown', (e) => {
+  if (e.key === 'w' || e.key === 'W') setMode('translate');
+  else if (e.key === 'e' || e.key === 'E') setMode('rotate');
+  else if (e.key === 'r' || e.key === 'R') setMode('scale');
+  else if (e.key === 'd' || e.key === 'D') duplicateSelected();
+  else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
+  else if (e.key === 'Escape') select(null);
+  else if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); save(); }
+});
+
+// === GLB DROP (asset import) ===
+const drophint = document.getElementById('drophint');
+addEventListener('dragover', (e) => { e.preventDefault(); drophint.style.display = 'flex'; });
+addEventListener('dragleave', (e) => { if (e.target === document.documentElement) drophint.style.display = 'none'; });
+addEventListener('drop', async (e) => {
+  e.preventDefault();
+  drophint.style.display = 'none';
+  const file = [...(e.dataTransfer?.files || [])].find((f) => /\.(glb|gltf)$/i.test(f.name));
+  if (!file) { flash('drop a .glb or .gltf file'); return; }
+
+  const url = URL.createObjectURL(file);
+  const base = file.name.replace(/\.(glb|gltf)$/i, '');
+  const relPath = 'assets/models/' + file.name;
+  const prop = { id: `${base}-${++addCounter}`, kind: 'model', src: './' + relPath,
+    position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] };
+
+  let obj;
+  try { obj = await loadModel(prop, url); }
+  catch (err) { flash('could not load ' + file.name + ': ' + err.message); URL.revokeObjectURL(url); return; }
+  URL.revokeObjectURL(url);
+
+  normalizeAndGround(obj, prop);           // sane scale + sit on the floor in front of camera
+  writeTransform(obj, prop);
+  sceneData.props.push(prop);
+  scene.add(obj);
+  editable.push(obj);
+  select(obj);
+  markDirty();
+
+  // Queue the bytes; write now if a folder is linked, else on next save after linking.
+  pendingAssets.push({ relPath, blob: new Blob([await file.arrayBuffer()]) });
+  if (dirHandle) { await flushAssets(); flash(`added ${file.name} → assets/models/`); }
+  else flash(`added ${file.name} — click Link Folder, then Save to write the .glb`);
+});
+
+// Scale a freshly loaded model toward ~2.5 units and rest its base on the ground,
+// positioned a few meters in front of the camera target.
+function normalizeAndGround(obj, prop) {
+  let box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  let s = 1;
+  if (maxDim > 3) s = 2.5 / maxDim;
+  else if (maxDim < 0.4) s = 1 / maxDim;
+  obj.scale.setScalar(r(s));
+
+  const front = new THREE.Vector3();
+  camera.getWorldDirection(front); front.y = 0; front.normalize();
+  const target = orbit.target.clone().add(front.multiplyScalar(3));
+  obj.position.set(r(target.x), 0, r(target.z));
+  obj.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(obj);
+  obj.position.y = r(-box.min.y);          // lift so the lowest point sits at y=0
+}
+
+// === RENDER LOOP ===
+renderer.setAnimationLoop(() => {
+  orbit.update();
+  renderer.render(scene, camera);
+});
+
+// === RESIZE HANDLER ===
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

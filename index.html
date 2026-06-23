@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Capsule</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+  #hud {
+    position: fixed; top: 8px; left: 8px;
+    font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace;
+    color: #fff; background: rgba(0,0,0,0.4); padding: 6px 8px;
+    border-radius: 4px; pointer-events: none; white-space: pre;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three":         "https://unpkg.com/three@0.171.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.171.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="hud">capsule</div>
+
+<script type="module">
+// === IMPORTS ===
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { loadScene, buildProps, applyTransform } from './scene.js';
+
+// === RENDERER & SCENE ===
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a22);
+scene.fog = new THREE.Fog(0x1a1a22, 20, 80);
+
+// === CAMERA ===
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(6, 5, 8);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1, 0);
+controls.enableDamping = true;
+
+// === LIGHTS ===
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444466, 0.6));
+
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(10, 15, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -20;
+sun.shadow.camera.right = 20;
+sun.shadow.camera.top = 20;
+sun.shadow.camera.bottom = -20;
+scene.add(sun);
+
+// === WORLD ===
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(50, 50),
+  new THREE.MeshStandardMaterial({ color: 0x2a3a2a })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// === ENTITIES ===
+// The player is, of course, a capsule. Its start comes from scene.json.
+const player = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.4, 0.8, 6, 12),
+  new THREE.MeshStandardMaterial({ color: 0xff5577 })
+);
+player.position.y = 0.8;
+player.castShadow = true;
+scene.add(player);
+
+// Props (crates, pillars, etc.) are placed in the editor and stored in scene.json.
+loadScene().then((data) => {
+  buildProps(scene, data);
+  if (data.player) {
+    if (data.player.position) applyTransform(player, { position: data.player.position });
+    if (data.player.color) player.material.color.set(data.player.color);
+  }
+}).catch((err) => console.warn('scene.json not loaded:', err.message));
+
+// === INPUT & STATE ===
+const keys = {};
+const hud = document.getElementById('hud');
+addEventListener('keydown', (e) => { keys[e.code] = true; });
+addEventListener('keyup',   (e) => { keys[e.code] = false; });
+
+// === UPDATE ===
+const speed = 4;
+function update(dt) {
+  let vx = 0, vz = 0;
+  if (keys['KeyW'] || keys['ArrowUp'])    vz -= 1;
+  if (keys['KeyS'] || keys['ArrowDown'])  vz += 1;
+  if (keys['KeyA'] || keys['ArrowLeft'])  vx -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) vx += 1;
+  const len = Math.hypot(vx, vz) || 1;
+  player.position.x += (vx / len) * speed * dt;
+  player.position.z += (vz / len) * speed * dt;
+
+  hud.textContent = `x:${player.position.x.toFixed(1)}  z:${player.position.z.toFixed(1)}`;
+}
+
+// === RENDER LOOP ===
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  update(dt);
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+// === RESIZE HANDLER ===
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
