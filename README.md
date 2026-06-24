@@ -1,6 +1,6 @@
 # Capsule
 
-A thin visual editor for three.js games that stay **plain, readable text** ->HTML, CSS,
+A thin visual editor for three.js games that stay **plain, readable text** -> HTML, CSS,
 JavaScript, with no build step, no bundler, nothing to compile. Easy to use and painless to augment with your own tools.
 
 Capsule is free and open source for all game devs!
