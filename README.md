@@ -12,10 +12,9 @@ Please consider donating if Capsule is useful to you.
 
 ## Why
 
-An LLM can write a three.js game from top to bottom. What it can't do well is **place things in
-3D space** — "move the crate two meters left and rotate it 30°" is painful in code and trivial
-with a mouse. Capsule is the viewport that closes that gap. You drag objects where they go; the
-agent owns everything else as text it can read and edit with zero roadblocks.
+AI is a great pair programmer. What it can't do well is **place things in
+3D space and design levels** — "move the crate two meters left and rotate it 30°" is painful in code and trivial
+with a mouse. Capsule is the viewport that closes that gap. You drag objects where they go and easily slot in AI assistants to help with backend tasks and code. We purposefully have avoided the bloat typical game editors introduce.
 
 Readability is the whole point. No webpack, no Vite, no transpile step, no opaque artifact — so
 any model can open the source and have a working game one second later.
@@ -61,8 +60,7 @@ CLAUDE.md     # AI context for Claude Code
 AGENTS.md     # same content, for other agents
 ```
 
-Multiple files are fine — split when it helps readability. The only rule: keep it plain text an
-agent can read end to end. The moment something needs to compile before it runs, the moat is gone.
+Multiple files are fine — split when it helps readability and modularity.
 
 ## Controls (demo scene)
 
