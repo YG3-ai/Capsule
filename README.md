@@ -3,6 +3,13 @@
 A thin visual editor for three.js games that stay **plain, readable text** — HTML, CSS,
 JavaScript — with no build step, no bundler, nothing to compile.
 
+Capsule is free and open source for all game devs!
+
+Please consider donating if Capsule is useful to you.
+
+[Support via Stripe](https://buy.stripe.com/5kQfZh5V30oabyO6ncb7y0i)
+
+
 ## Why
 
 An LLM can write a three.js game from top to bottom. What it can't do well is **place things in
