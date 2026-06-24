@@ -3,3 +3,6 @@ Thumbs.db
 *.log
 .capsule/
 node_modules/
+
+# Personal, machine-specific run notes (references local paths)
+RUN_COMMAND.md
