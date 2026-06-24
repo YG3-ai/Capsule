@@ -13,6 +13,13 @@ agent owns everything else as text it can read and edit with zero roadblocks.
 Readability is the whole point. No webpack, no Vite, no transpile step, no opaque artifact — so
 any model can open the source and have a working game one second later.
 
+## Docs
+
+- **[GUIDE.md](GUIDE.md)** — using Capsule: the hook, tagging assets, naming, scenes & state
+  changes, and the editor workflow. Read this to start a project.
+- **[SCENES.md](SCENES.md)** — the spec for scenes/states, the tag/type/detector conventions,
+  and the naming rules.
+
 ## What it does (roadmap)
 
 - **Viewport placement** — select, move, rotate, and scale objects; changes save back to plain

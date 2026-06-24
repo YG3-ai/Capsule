@@ -2,6 +2,14 @@
 
 This repo is the **Capsule editor** — a thin visual layer over plain-text three.js games.
 
+## Docs
+
+- **[GUIDE.md](GUIDE.md)** — how to build or adapt a game so Capsule tracks its assets
+  (the hook, tagging, naming, scenes, states, the editor workflow). Start here.
+- **[SCENES.md](SCENES.md)** — the normative spec: scenes/states layering, file layout, the
+  tag/type/detector conventions, and the locked naming rules.
+- **[export/README.md](export/README.md)** — wrapping a capsule into a native executable.
+
 ## What Capsule is for
 
 LLMs write three.js games top to bottom just fine. The HTML, the CSS, the game loop, the
