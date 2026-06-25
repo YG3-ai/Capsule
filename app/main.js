@@ -13,8 +13,15 @@ const { spawn } = require('child_process');
 const { startMcp, MCP_PORT } = require('./mcp.js');
 
 let win = null;
+let termWin = null;
 let projectDir = null;
 let server = null;
+
+// ── config (which AI agent CLI to run) ────────────────────
+const cfgPath = () => path.join(app.getPath('userData'), 'capsule-config.json');
+function getConfig() { try { return JSON.parse(fs.readFileSync(cfgPath(), 'utf8')); } catch { return {}; } }
+function setConfig(patch) { const c = { ...getConfig(), ...patch }; try { fs.writeFileSync(cfgPath(), JSON.stringify(c, null, 2)); } catch {} return c; }
+const agentCommand = () => getConfig().agent || 'claude';
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
@@ -63,8 +70,18 @@ function findEntry(dir) {
   return html || 'index.html';
 }
 
+// Wire the project's Claude Code (and the AI box agent) to the editor MCP, if not already.
+function ensureMcpConfig(dir) {
+  const f = path.join(dir, '.mcp.json');
+  if (fs.existsSync(f)) return;
+  try {
+    fs.writeFileSync(f, JSON.stringify({ mcpServers: { capsule: { type: 'http', url: `http://127.0.0.1:${MCP_PORT}/mcp` } } }, null, 2) + '\n');
+  } catch { /* ignore */ }
+}
+
 async function openProject(dir, { launchCode = true } = {}) {
   projectDir = dir;
+  ensureMcpConfig(dir);
   if (server) { server.close(); server = null; }
   server = await startServer(dir);
   const { port } = server.address();
@@ -83,6 +100,30 @@ function togglePlayEdit() {
     if (u.searchParams.has('edit')) u.searchParams.delete('edit'); else u.searchParams.set('edit', '');
     win.loadURL(u.toString());
   } catch { /* no game loaded yet */ }
+}
+
+// The AI box — a window running the configured agent CLI in the project, in a real
+// PTY (xterm + node-pty). The agent sees the live editor through the MCP server.
+function openTerminal() {
+  if (!projectDir) { dialog.showMessageBox(win, { message: 'Open a project first.' }); return; }
+  if (termWin && !termWin.isDestroyed()) { termWin.focus(); return; }
+  termWin = new BrowserWindow({
+    width: 720, height: 820, backgroundColor: '#15151b', title: 'Capsule · AI',
+    webPreferences: { nodeIntegration: true, contextIsolation: false },
+  });
+  termWin.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommand() } });
+  termWin.on('closed', () => { termWin = null; });
+}
+
+function chooseAgent() {
+  const opts = ['claude', 'codex', 'aider', 'Cancel'];
+  const r = dialog.showMessageBoxSync(win, {
+    type: 'question', message: 'AI agent', detail: 'Which CLI should the AI box run? (uses that tool\'s own auth)',
+    buttons: opts, cancelId: 3, defaultId: 0,
+  });
+  if (r >= 3) return;
+  setConfig({ agent: opts[r] });
+  if (termWin && !termWin.isDestroyed()) termWin.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommand() } });
 }
 
 function openInVSCode() {
@@ -119,6 +160,9 @@ function buildMenu() {
     { label: 'Project', submenu: [
       { label: 'Open Project…', accelerator: 'CmdOrCtrl+O', click: () => pickProject() },
       { label: 'Toggle Play / Edit', accelerator: 'CmdOrCtrl+E', click: () => togglePlayEdit() },
+      { type: 'separator' },
+      { label: 'AI Box', accelerator: 'CmdOrCtrl+J', click: () => openTerminal() },
+      { label: 'Set AI Agent…', click: () => chooseAgent() },
       { label: 'Open in VS Code', accelerator: 'CmdOrCtrl+Shift+C', click: () => openInVSCode() },
       { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => win.reload() },
     ] },

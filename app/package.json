@@ -20,6 +20,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "mcp.js",
+      "terminal.html",
       "package.json"
     ],
     "directories": {
