@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body { margin: 0; height: 100%; background: #1c1c24; color: #cce;
+    font: 13px ui-monospace, Menlo, monospace; display: flex; flex-direction: column; }
+  #msg { padding: 12px 14px 6px; color: #9aa; }
+  #in { margin: 0 14px; padding: 8px; background: #222; border: 1px solid #3a3a48; color: #cce;
+    border-radius: 5px; font: 13px ui-monospace, monospace; }
+  #in:focus { outline: none; border-color: #4fd6c2; }
+  #row { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 14px; }
+  button { background: #2a2a36; border: 1px solid #3a3a48; color: #ddd; padding: 7px 14px;
+    border-radius: 5px; cursor: pointer; font: 12px ui-monospace, monospace; }
+  button#ok { background: #2f7d4f; border-color: #2f7d4f; color: #fff; }
+</style>
+</head>
+<body>
+<div id="msg"></div>
+<input id="in" />
+<div id="row"><button id="cancel">Cancel</button><button id="ok">OK</button></div>
+<script>
+  const { ipcRenderer } = require('electron');
+  const p = new URLSearchParams(location.search);
+  document.getElementById('msg').textContent = p.get('msg') || '';
+  const input = document.getElementById('in');
+  input.value = p.get('value') || '';
+  input.focus(); input.select();
+  const done = (v) => ipcRenderer.send('prompt:done', v);
+  document.getElementById('ok').onclick = () => done(input.value);
+  document.getElementById('cancel').onclick = () => done(null);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') done(input.value);
+    if (e.key === 'Escape') done(null);
+  });
+</script>
+</body>
+</html>

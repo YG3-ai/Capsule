@@ -115,14 +115,37 @@ function openTerminal() {
   termWin.on('closed', () => { termWin = null; });
 }
 
-function chooseAgent() {
-  const opts = ['claude', 'codex', 'aider', 'Cancel'];
-  const r = dialog.showMessageBoxSync(win, {
-    type: 'question', message: 'AI agent', detail: 'Which CLI should the AI box run? (uses that tool\'s own auth)',
-    buttons: opts, cancelId: 3, defaultId: 0,
+// A small modal text prompt (Electron has no built-in one).
+function showPrompt(message, value = '') {
+  return new Promise((resolve) => {
+    const pw = new BrowserWindow({
+      width: 480, height: 165, parent: win, modal: true, resizable: false, minimizable: false,
+      maximizable: false, title: '', backgroundColor: '#1c1c24',
+      webPreferences: { nodeIntegration: true, contextIsolation: false },
+    });
+    pw.setMenu(null);
+    pw.loadFile('prompt.html', { query: { msg: message, value } });
+    const onDone = (_e, v) => { ipcMain.removeListener('prompt:done', onDone); if (!pw.isDestroyed()) pw.close(); resolve(v); };
+    ipcMain.on('prompt:done', onDone);
+    pw.on('closed', () => { ipcMain.removeListener('prompt:done', onDone); resolve(null); });
   });
-  if (r >= 3) return;
-  setConfig({ agent: opts[r] });
+}
+
+async function chooseAgent() {
+  const opts = ['claude', 'claude --continue', 'codex', 'aider', 'Custom…', 'Cancel'];
+  const r = dialog.showMessageBoxSync(win, {
+    type: 'question', message: 'AI agent',
+    detail: 'Which CLI should the AI box run? (uses that tool\'s own auth)\n"claude --continue" resumes your last conversation in this project.',
+    buttons: opts, cancelId: 5, defaultId: 0,
+  });
+  if (r >= 5) return;
+  let cmd = opts[r];
+  if (cmd === 'Custom…') {
+    cmd = await showPrompt('Agent command — e.g. "claude --continue" or "aider --model gpt-4o"', agentCommand());
+    if (!cmd || !cmd.trim()) return;
+    cmd = cmd.trim();
+  }
+  setConfig({ agent: cmd });
   if (termWin && !termWin.isDestroyed()) termWin.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommand() } });
 }
 
