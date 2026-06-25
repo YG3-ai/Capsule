@@ -23,7 +23,12 @@
       "mcp.js",
       "terminal.html",
       "prompt.html",
+      "welcome.html",
+      "template/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "template/**/*"
     ],
     "directories": {
       "output": "dist"

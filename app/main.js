@@ -22,6 +22,12 @@ const cfgPath = () => path.join(app.getPath('userData'), 'capsule-config.json');
 function getConfig() { try { return JSON.parse(fs.readFileSync(cfgPath(), 'utf8')); } catch { return {}; } }
 function setConfig(patch) { const c = { ...getConfig(), ...patch }; try { fs.writeFileSync(cfgPath(), JSON.stringify(c, null, 2)); } catch {} return c; }
 const agentCommand = () => getConfig().agent || 'claude';
+const getRecents = () => getConfig().recents || [];
+function pushRecent(dir) {
+  const r = getRecents().filter((x) => x.path !== dir);
+  r.unshift({ path: dir, name: path.basename(dir) });
+  setConfig({ recents: r.slice(0, 8) });
+}
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
@@ -79,8 +85,35 @@ function ensureMcpConfig(dir) {
   } catch { /* ignore */ }
 }
 
+// Welcome screen — shown when no project is open.
+function showWelcome() {
+  projectDir = null;
+  if (server) { server.close(); server = null; }
+  win.setTitle('Capsule');
+  win.loadFile('welcome.html');
+}
+
+// Scaffold a fresh capsule from the bundled template, then open it.
+async function newProject() {
+  const r = await dialog.showSaveDialog(win, {
+    title: 'New Capsule project', buttonLabel: 'Create',
+    message: 'Choose a location and name for the project folder',
+    defaultPath: path.join(app.getPath('documents'), 'my-capsule-game'),
+  });
+  if (r.canceled || !r.filePath) return;
+  const dir = r.filePath;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.cpSync(path.join(__dirname, 'template'), dir, { recursive: true });
+    await openProject(dir);
+  } catch (e) {
+    dialog.showMessageBox(win, { type: 'error', message: 'Could not create project', detail: String(e.message || e) });
+  }
+}
+
 async function openProject(dir, { launchCode = true } = {}) {
   projectDir = dir;
+  pushRecent(dir);
   ensureMcpConfig(dir);
   if (server) { server.close(); server = null; }
   server = await startServer(dir);
@@ -176,12 +209,17 @@ ipcMain.handle('capsule:save', (_e, { name, json }) => {
 });
 ipcMain.handle('capsule:code', () => openInVSCode());
 ipcMain.handle('capsule:pick', () => pickProject());
+ipcMain.handle('capsule:new', () => newProject());
+ipcMain.handle('capsule:recents', () => getRecents());
+ipcMain.handle('capsule:openPath', (_e, p) => openProject(p));
 
 function buildMenu() {
   const tmpl = [
     { label: 'Capsule', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }] },
     { label: 'Project', submenu: [
+      { label: 'New Project…', accelerator: 'CmdOrCtrl+N', click: () => newProject() },
       { label: 'Open Project…', accelerator: 'CmdOrCtrl+O', click: () => pickProject() },
+      { label: 'Welcome Screen', click: () => showWelcome() },
       { label: 'Toggle Play / Edit', accelerator: 'CmdOrCtrl+E', click: () => togglePlayEdit() },
       { type: 'separator' },
       { label: 'AI Box', accelerator: 'CmdOrCtrl+J', click: () => openTerminal() },
@@ -213,7 +251,7 @@ app.whenReady().then(async () => {
   });
   const initial = process.env.CAPSULE_PROJECT || argDir;
   if (initial) await openProject(initial, { launchCode: !process.env.CAPSULE_NO_CODE });
-  else await pickProject();
+  else showWelcome();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Capsule game</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #15151b; }
+  canvas { display: block; }
+  #hud { position: fixed; top: 8px; left: 8px; font: 12px ui-monospace, Menlo, monospace;
+    color: #cce; background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 4px; pointer-events: none; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three":         "https://unpkg.com/three@0.171.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.171.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="hud">empty capsule — open the AI box (⌘J) and describe a game</div>
+
+<script type="module">
+// === IMPORTS ===
+import * as THREE from 'three';
+
+// === RENDERER & SCENE ===
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x15151b);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(5, 4, 7);
+camera.lookAt(0, 0.5, 0);
+
+// === LIGHTS ===
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444466, 0.7));
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(8, 12, 6); sun.castShadow = true;
+scene.add(sun);
+
+// === CAPSULE HOOK (the editor runtime — keep this) ===========================
+// Exposes the live scene so the Capsule editor + AI can see and place things.
+// An object becomes editable just by carrying userData.capsuleId — registerEditable()
+// / tag() set that, and scan() auto-detects anything tagged. See the project's
+// CLAUDE.md and the Capsule GUIDE.md for the conventions.
+const DEG = Math.PI / 180;
+const GLTF = await import('three/addons/loaders/GLTFLoader.js');
+const _loader = new GLTF.GLTFLoader();
+function _apply(obj, o) {
+  if (!o) return;
+  if (o.position) obj.position.set(o.position[0], o.position[1], o.position[2]);
+  if (o.rotation) obj.rotation.set(o.rotation[0]*DEG, o.rotation[1]*DEG, o.rotation[2]*DEG);
+  if (o.scale)    obj.scale.set(o.scale[0], o.scale[1], o.scale[2]);
+  if (o.visible !== undefined) obj.visible = o.visible;
+}
+const _inScene = (o) => { for (let p = o; p; p = p.parent) if (p === scene) return true; return false; };
+window.capsule = {
+  scene, camera, renderer, THREE,
+  data: { version: 1, scenes: {} }, editable: [], detectors: [], scenes: {},
+  activeScene: 'main', activeState: 'base',
+  _resolve(id) { const sc = this.data.scenes?.[this.activeScene]; if (!sc) return null;
+    return { ...(sc.base?.[id] || {}), ...(sc.states?.[this.activeState]?.[id] || {}) }; },
+  registerEditable(obj, id, type) {
+    obj.userData.capsuleId = id; if (type) obj.userData.capsuleType = type; if (!obj.name) obj.name = id;
+    this.editable = this.editable.filter(e => e.id !== id);
+    this.editable.push({ id, obj, type: obj.userData.capsuleType || 'object' });
+    _apply(obj, this._resolve(id)); return obj;
+  },
+  tag(obj, opts = {}) { const o = typeof opts === 'string' ? { type: opts } : opts;
+    const id = o.id || `${o.type||'obj'}@${Math.round(obj.position.x*10)/10},${Math.round(obj.position.z*10)/10}`;
+    return this.registerEditable(obj, id, o.type); },
+  addDetector(fn) { this.detectors.push(fn); return this; },
+  scan() { this.scene.traverse(o => {
+      if (this.editable.some(e => e.obj === o)) return;
+      let id = o.userData?.capsuleId;
+      if (!id) for (const d of this.detectors) { const r = d(o); if (r?.id) { id = r.id; o.userData.capsuleId = id; if (r.type) o.userData.capsuleType = r.type; break; } }
+      if (id) this.registerEditable(o, id, o.userData.capsuleType);
+    });
+    this.editable = this.editable.filter(e => _inScene(e.obj)); },
+  defineScene(name, def) { this.scenes[name] = def; },
+  setActiveScene(name) { if (this.activeScene === name) return; this.activeScene = name; this.editable = []; },
+  setActiveState(state) { if (this.activeState === state) return; this.activeState = state;
+    for (const { id, obj } of this.editable) _apply(obj, this._resolve(id)); },
+  loadModel(src) { return new Promise((res, rej) => _loader.load(src, g => res(g.scene), undefined, rej)); },
+};
+fetch('./capsule.scenes.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+  .then(d => { if (d) window.capsule.data = d; window.capsule.scan(); }).catch(() => {});
+setInterval(() => window.capsule.scan(), 1500);
+// ============================================================================
+
+// === WORLD ===
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 40),
+  new THREE.MeshStandardMaterial({ color: 0x2a2a33 })
+);
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+scene.add(ground);
+
+// A starter cube — editable. Tell the AI to replace it with your game.
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(1, 1, 1),
+  new THREE.MeshStandardMaterial({ color: 0x4fd6c2 })
+);
+cube.position.set(0, 0.5, 0); cube.castShadow = true;
+scene.add(cube);
+window.capsule.registerEditable(cube, 'starter-cube', 'prop');
+
+// === RENDER LOOP ===
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => { clock.getDelta(); renderer.render(scene, camera); });
+
+// === RESIZE ===
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// === CAPSULE EDIT MODE (?edit) — attaches the editor overlay ===
+if (new URLSearchParams(location.search).has('edit')) {
+  import('./capsule-edit.js').then(m => m.initCapsuleEditor(window.capsule)).catch((e) => console.error(e));
+}
+</script>
+</body>
+</html>

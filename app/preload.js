@@ -11,4 +11,7 @@ contextBridge.exposeInMainWorld('capsuleHost', {
   saveScenes: (json, name = 'capsule.scenes.json') => ipcRenderer.invoke('capsule:save', { json, name }),
   openInVSCode: () => ipcRenderer.invoke('capsule:code'),
   pickProject: () => ipcRenderer.invoke('capsule:pick'),
+  newProject: () => ipcRenderer.invoke('capsule:new'),
+  recents: () => ipcRenderer.invoke('capsule:recents'),
+  openPath: (p) => ipcRenderer.invoke('capsule:openPath', p),
 });
