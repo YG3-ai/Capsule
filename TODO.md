@@ -32,16 +32,30 @@ Deferred items, roughly grouped. Not in priority order.
 - [ ] **GLB filename de-dup on import** — two different `tree.glb`s would overwrite in
       `assets/models/`.
 
-## AI integration
+## AI integration — the "no learning curve" on-ramp
 
-- [ ] **Capsule MCP server** — expose the live editor to Claude Code as MCP tools:
-      `list_editables`, `get_selection`, `select`, `move/rotate/scale` (with undo),
-      `set_layer`, `save`, and crucially `screenshot` (so Claude can *see* the viewport).
-      The app's main process hosts the MCP server and bridges to the editor via IPC. Lets
-      Claude read + drive the scene from wherever it runs — the high-leverage first step.
-- [ ] **Embedded Claude session in the app** — a chat panel inside the Capsule window (spawn
-      `claude` in a pane, or the Agent SDK) so you don't switch to VS Code/terminal. Heavier;
-      do the MCP first.
+The product thesis: gizmos are the precision layer; an **AI box is the zero-learning entry**
+— open your game, type "make it night and add a tree by the door," done. Three layers:
+
+- [ ] **MCP (eyes + hands)** — the app's main process exposes the live editor as MCP tools:
+      `list_editables`, `get_selection`, `select`, `move/rotate/scale` (with undo), `set_layer`,
+      `save`, and crucially **`screenshot`** so Claude can *see* the viewport. Bridges to the
+      editor via IPC. The enabler — build first.
+- [ ] **AI box (chat panel in the app)** — the front door. A chat surface in the Capsule window
+      (Claude Agent SDK session in the main process, streamed to a renderer panel), wired to the
+      MCP so it can act on the scene.
+- [ ] **Session continuity** — the box **resumes** the project's Claude Code session, so you
+      continue the conversation you were having in VS Code. Hand-off model (resume), not two
+      live clients on one session. Uses the user's existing Claude auth (bring-your-own).
+      Prereqs: the desktop app (container) must be finished first.
+
+## Research
+
+- [ ] **Evaluate Cortexdb (or similar) as a memory layer** — for AI continuity across sessions.
+      Need the actual repo/link to assess. Bar to clear: must beat "readable markdown context
+      (CLAUDE/GUIDE/SCENES/TODO) + Claude Code native session resume + memory files," which is
+      zero-dep and fits the moat. Would live in the editor/tooling side only — never inside the
+      capsule games (those stay dependency-free).
 
 ## Product / distribution
 

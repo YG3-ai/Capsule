@@ -10,6 +10,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { startMcp, MCP_PORT } = require('./mcp.js');
 
 let win = null;
 let projectDir = null;
@@ -136,6 +137,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   createWindow();
   buildMenu();
+  startMcp(() => win);   // expose the live editor to Claude over MCP
   // A project can be passed for CLI/testing: `npm start -- <dir>`, `capsule <dir>`,
   // or CAPSULE_PROJECT=… . Skip '.' (electron's app-path arg) and the app dir itself.
   const argDir = process.argv.slice(1).find((a) => {

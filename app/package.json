@@ -17,10 +17,28 @@
   "build": {
     "appId": "ai.yg3.capsule.editor",
     "productName": "Capsule",
-    "files": ["main.js", "preload.js", "package.json"],
-    "directories": { "output": "dist" },
-    "mac": { "target": "dmg", "category": "public.app-category.developer-tools", "identity": null },
-    "win": { "target": "nsis" },
-    "linux": { "target": "AppImage", "category": "Development" }
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Development"
+    }
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
   }
 }
