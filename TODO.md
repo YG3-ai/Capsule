@@ -32,7 +32,25 @@ Deferred items, roughly grouped. Not in priority order.
 - [ ] **GLB filename de-dup on import** — two different `tree.glb`s would overwrite in
       `assets/models/`.
 
-## Product / distribution (see the "how is Capsule used" discussion)
+## AI integration
 
-- [ ] Decide Capsule's form: copied code → reusable runtime → standalone editor app that
-      injects the overlay into any served game. (Open question.)
+- [ ] **Capsule MCP server** — expose the live editor to Claude Code as MCP tools:
+      `list_editables`, `get_selection`, `select`, `move/rotate/scale` (with undo),
+      `set_layer`, `save`, and crucially `screenshot` (so Claude can *see* the viewport).
+      The app's main process hosts the MCP server and bridges to the editor via IPC. Lets
+      Claude read + drive the scene from wherever it runs — the high-leverage first step.
+- [ ] **Embedded Claude session in the app** — a chat panel inside the Capsule window (spawn
+      `claude` in a pane, or the Agent SDK) so you don't switch to VS Code/terminal. Heavier;
+      do the MCP first.
+
+## Product / distribution
+
+- [x] **Desktop app** (`app/`) — Electron editor: opens a project, serves it, attaches the
+      overlay, **saves straight to disk (no picker)**, opens VS Code on the project. MVP works.
+- [ ] **Package the app** for download — `app/` has `electron-builder` config; build + verify
+      the `.dmg` / `.exe` / `.AppImage` (heavy; only the dev run is verified so far).
+- [ ] **Welcome screen** — the app currently opens the picker on launch; a proper start screen
+      with recent projects would be nicer.
+- [ ] **Auto-inject the overlay** — the app serves the game as-is, so the game still needs the
+      `window.capsule` hook + `capsule-edit.js` in its source. Having the app inject the overlay
+      (game only exposes the scene) would remove the last copied code.
