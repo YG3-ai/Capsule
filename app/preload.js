@@ -16,4 +16,14 @@ contextBridge.exposeInMainWorld('capsuleHost', {
   newProject: () => ipcRenderer.invoke('capsule:new'),
   recents: () => ipcRenderer.invoke('capsule:recents'),
   openPath: (p) => ipcRenderer.invoke('capsule:openPath', p),
+  // screens + project lifecycle
+  welcome: () => ipcRenderer.invoke('capsule:welcome'),
+  browse: () => ipcRenderer.invoke('capsule:browse'),
+  newScreen: () => ipcRenderer.invoke('capsule:newScreen'),
+  projects: () => ipcRenderer.invoke('capsule:projects'),         // { root, projects[], recents[] }
+  createProject: (opts) => ipcRenderer.invoke('capsule:create', opts), // { name, kind, platform }
+  revealProjects: () => ipcRenderer.invoke('capsule:revealProjects'),
+  // viewport + export
+  setViewport: (w, h) => ipcRenderer.invoke('capsule:viewport', { w, h }),
+  exportGame: (target, mobile) => ipcRenderer.invoke('capsule:export', { target, mobile }),
 });

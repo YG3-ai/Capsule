@@ -24,6 +24,10 @@
       "terminal.html",
       "prompt.html",
       "welcome.html",
+      "newproject.html",
+      "browse.html",
+      "template-2d.html",
+      "ui/**/*",
       "template/**/*",
       "package.json"
     ],

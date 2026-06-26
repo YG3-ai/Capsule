@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Capsule game (2D)</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #0e0e14; }
+  canvas { display: block; }
+  #hud { position: fixed; top: 8px; left: 8px; font: 12px ui-monospace, Menlo, monospace;
+    color: #cce; background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 4px; pointer-events: none; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three":         "https://unpkg.com/three@0.171.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.171.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="hud">empty 2D capsule — open the AI box (⌘J) and describe a 2D game</div>
+
+<script type="module">
+// === IMPORTS ===
+import * as THREE from 'three';
+
+// === RENDERER & SCENE ===
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0e0e14);
+
+// === CAMERA (orthographic — a true 2D view; world units, +Y is up) ===
+const F = 6;                                   // half-height of the view, in world units
+const aspect = window.innerWidth / window.innerHeight;
+const camera = new THREE.OrthographicCamera(-F * aspect, F * aspect, F, -F, 0.1, 100);
+camera.position.set(0, 0, 10);
+camera.lookAt(0, 0, 0);
+
+// === CAPSULE HOOK (the editor runtime — keep this) ===========================
+const DEG = Math.PI / 180;
+const GLTF = await import('three/addons/loaders/GLTFLoader.js');
+const _loader = new GLTF.GLTFLoader();
+function _apply(obj, o) {
+  if (!o) return;
+  if (o.position) obj.position.set(o.position[0], o.position[1], o.position[2]);
+  if (o.rotation) obj.rotation.set(o.rotation[0]*DEG, o.rotation[1]*DEG, o.rotation[2]*DEG);
+  if (o.scale)    obj.scale.set(o.scale[0], o.scale[1], o.scale[2]);
+  if (o.visible !== undefined) obj.visible = o.visible;
+}
+const _inScene = (o) => { for (let p = o; p; p = p.parent) if (p === scene) return true; return false; };
+window.capsule = {
+  scene, camera, renderer, THREE,
+  data: { version: 1, scenes: {} }, editable: [], detectors: [], scenes: {},
+  activeScene: 'main', activeState: 'base',
+  _resolve(id) { const sc = this.data.scenes?.[this.activeScene]; if (!sc) return null;
+    return { ...(sc.base?.[id] || {}), ...(sc.states?.[this.activeState]?.[id] || {}) }; },
+  registerEditable(obj, id, type) {
+    obj.userData.capsuleId = id; if (type) obj.userData.capsuleType = type; if (!obj.name) obj.name = id;
+    this.editable = this.editable.filter(e => e.id !== id);
+    this.editable.push({ id, obj, type: obj.userData.capsuleType || 'object' });
+    _apply(obj, this._resolve(id)); return obj;
+  },
+  tag(obj, opts = {}) { const o = typeof opts === 'string' ? { type: opts } : opts;
+    const id = o.id || `${o.type||'obj'}@${Math.round(obj.position.x*10)/10},${Math.round(obj.position.y*10)/10}`;
+    return this.registerEditable(obj, id, o.type); },
+  addDetector(fn) { this.detectors.push(fn); return this; },
+  scan() { this.scene.traverse(o => {
+      if (this.editable.some(e => e.obj === o)) return;
+      let id = o.userData?.capsuleId;
+      if (!id) for (const d of this.detectors) { const r = d(o); if (r?.id) { id = r.id; o.userData.capsuleId = id; if (r.type) o.userData.capsuleType = r.type; break; } }
+      if (id) this.registerEditable(o, id, o.userData.capsuleType);
+    });
+    this.editable = this.editable.filter(e => _inScene(e.obj)); },
+  defineScene(name, def) { this.scenes[name] = def; },
+  setActiveScene(name) { if (this.activeScene === name) return; this.activeScene = name; this.editable = []; },
+  setActiveState(state) { if (this.activeState === state) return; this.activeState = state;
+    for (const { id, obj } of this.editable) _apply(obj, this._resolve(id)); },
+  loadModel(src) { return new Promise((res, rej) => _loader.load(src, g => res(g.scene), undefined, rej)); },
+  _added: new Set(),
+  async addObject(prop) {
+    const obj = await this.loadModel(prop.src);
+    obj.userData.capsuleAdded = true; _apply(obj, prop); this.scene.add(obj); this._added.add(prop.id);
+    this.registerEditable(obj, prop.id, prop.type || 'model');
+    const sc = this.data.scenes[this.activeScene] || (this.data.scenes[this.activeScene] = { base: {}, states: {}, added: [] });
+    if (!sc.added) sc.added = [];
+    if (!sc.added.find(a => a.id === prop.id)) sc.added.push(prop);
+    return obj;
+  },
+  _loadAdded() {
+    const sc = this.data.scenes?.[this.activeScene]; if (!sc?.added) return;
+    for (const a of sc.added) { if (this._added.has(a.id)) continue; this._added.add(a.id);
+      this.loadModel(a.src).then(obj => { obj.userData.capsuleAdded = true; _apply(obj, a); this.scene.add(obj);
+        this.registerEditable(obj, a.id, a.type || 'model');
+      }).catch(e => console.warn('[capsule] added object failed:', a.id, e.message)); }
+  },
+};
+fetch('./capsule.scenes.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+  .then(d => { if (d) window.capsule.data = d; window.capsule.scan(); window.capsule._loadAdded(); }).catch(() => {});
+setInterval(() => window.capsule.scan(), 1500);
+// ============================================================================
+
+// === WORLD (flat sprites — MeshBasicMaterial is unlit, so 2D reads crisp) ===
+function quad(w, h, color) {
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color }));
+}
+// A starter player — editable. Tell the AI to replace it with your game.
+const player = quad(1, 1, 0x4fd6c2);
+player.position.set(0, 0, 0);
+scene.add(player);
+window.capsule.registerEditable(player, 'player', 'entity');
+
+// a couple of pickups to drag around
+for (const [x, y, i] of [[-3, 1.5, 0], [3, -1, 1]]) {
+  const p = quad(0.5, 0.5, 0xffd23f);
+  p.position.set(x, y, 0);
+  scene.add(p);
+  window.capsule.registerEditable(p, 'pickup-' + i, 'pickup');
+}
+
+// === RENDER LOOP ===
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => { clock.getDelta(); renderer.render(scene, camera); });
+
+// === RESIZE (keep the orthographic frustum matched to the window) ===
+addEventListener('resize', () => {
+  const a = window.innerWidth / window.innerHeight;
+  camera.left = -F * a; camera.right = F * a; camera.top = F; camera.bottom = -F;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// === CAPSULE EDIT MODE (?edit) — attaches the editor overlay ===
+if (new URLSearchParams(location.search).has('edit')) {
+  import('./capsule-edit.js').then(m => m.initCapsuleEditor(window.capsule)).catch((e) => console.error(e));
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+/* Capsule editor — shared design tokens (mirror of YG3 tokens.ts).
+   Luxury dark-admin: near-black canvas, barely-visible surfaces, white text, gold accents.
+   Link this from any app chrome page and pull from the vars — don't inline colors. */
+
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,900&f[]=general-sans@400,500,600&display=swap');
+
+:root {
+  /* neutrals + brand */
+  --bg: #0A0A0E;
+  --surface: rgba(255,255,255,0.015);
+  --surface-hover: rgba(255,255,255,0.03);
+  --surface-raised: rgba(14,14,20,0.96);
+  --overlay: rgba(0,0,0,0.55);
+  --border: rgba(255,255,255,0.06);
+  --border-subtle: rgba(255,255,255,0.04);
+  --border-strong: rgba(255,255,255,0.12);
+  --border-focus: rgba(212,160,74,0.45);
+  --text: #FFFFFF;
+  --text-muted: rgba(255,255,255,0.65);
+  --text-dim: rgba(255,255,255,0.45);
+  --text-faint: rgba(255,255,255,0.25);
+  --on-brand: #0A0A0E;
+  --brand: #D4A04A;
+  --brand-hover: #E8B84B;
+  --brand-soft: rgba(212,160,74,0.08);
+  --brand-soft-hover: rgba(212,160,74,0.14);
+  --brand-border: rgba(212,160,74,0.30);
+  /* semantic */
+  --success: #34d399; --warning: #fbbf24; --danger: #f87171; --info: #60a5fa;
+
+  /* type */
+  --font: 'Satoshi','Inter',system-ui,-apple-system,sans-serif;
+  --font-body: 'General Sans','Inter',system-ui,-apple-system,sans-serif;
+  --track-label: 0.12em;
+  --track-display: 0.18em;
+  --track-tight: -0.02em;
+
+  /* radius */
+  --r-sm: 6px; --r-md: 8px; --r-lg: 10px; --r-xl: 12px; --r-2xl: 14px; --r-3xl: 18px;
+
+  /* motion */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --fast: 120ms; --base: 180ms; --slow: 280ms;
+
+  /* shadow */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+  --shadow-pop: 0 10px 30px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35);
+  --shadow-focus: 0 0 0 3px var(--border-focus);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-body); -webkit-font-smoothing: antialiased;
+}
+
+/* eyebrow — ALL-CAPS section label */
+.cap-eyebrow {
+  font-family: var(--font); font-weight: 700; font-size: 11px;
+  text-transform: uppercase; letter-spacing: var(--track-label); color: var(--text-dim);
+}
+
+/* button primitives */
+.cap-btn {
+  font-family: var(--font); font-weight: 600; font-size: 14px;
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 9px 14px; border-radius: var(--r-md);
+  color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.cap-btn:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+.cap-btn--primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); font-weight: 700; }
+.cap-btn--primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+.cap-btn--ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+.cap-btn--ghost:hover { background: var(--surface-hover); color: var(--text); }
+
+/* input primitive */
+.cap-input {
+  font-family: var(--font); font-size: 14px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 10px 12px; transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+}
+.cap-input:hover { border-color: var(--border-strong); }
+.cap-input:focus { outline: none; border-color: var(--brand-border); box-shadow: 0 0 0 3px var(--brand-soft); }
+
+/* card primitive */
+.cap-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-2xl); padding: 20px;
+  transition: background var(--base) var(--ease), border-color var(--base) var(--ease), transform var(--fast) var(--ease);
+}
+.cap-card--interactive { cursor: pointer; }
+.cap-card--interactive:hover { background: var(--surface-hover); border-color: var(--brand-border); transform: translateY(-1px); }

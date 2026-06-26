@@ -111,11 +111,15 @@ export function initCapsuleEditor(capsule) {
 
   // ── UI ────────────────────────────────────────────────
   const ui = injectUI();
-  const { hud, list, saveBtn, modeBtns, sceneSel, layerSel, undoBtn, redoBtn, playBtn, inspEl, inspInputs } = ui;
+  const { hud, list, saveBtn, modeBtns, sceneSel, layerSel, undoBtn, redoBtn, playBtn, homeBtn, codeBtn, inspEl, inspInputs } = ui;
   undoBtn.onclick = undo;
   redoBtn.onclick = redo;
   // Play = run the real game (drop ?edit). Saved placements still apply on load.
   playBtn.onclick = () => { const u = new URL(location.href); u.searchParams.delete('edit'); location.href = u.toString(); };
+  // Home / VS Code need the Capsule app bridge; hide them in a plain browser.
+  const host = window.capsuleHost;
+  if (host && host.welcome) homeBtn.onclick = () => host.welcome(); else homeBtn.style.display = 'none';
+  if (host && host.openInVSCode) codeBtn.onclick = () => host.openInVSCode(); else codeBtn.style.display = 'none';
 
   // ── numeric inspector (type exact transforms) ─────────
   function refreshInspector() {
@@ -144,7 +148,7 @@ export function initCapsuleEditor(capsule) {
     return ['base', ...states];   // Base (shared) + every real state/loop
   }
   function labelFor(layer) {
-    if (layer === 'base') return 'Base · all loops';
+    if (layer === 'base') return 'Base · all states';
     const labels = (capsule.scenes[editScene] && capsule.scenes[editScene].labels) || {};
     return labels[layer] || layer;
   }
@@ -379,7 +383,8 @@ export function initCapsuleEditor(capsule) {
   // ── GLB drag-drop import ──────────────────────────────
   const dropHint = document.createElement('div');
   dropHint.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;justify-content:center;' +
-    'pointer-events:none;background:rgba(79,214,194,.12);border:3px dashed #4fd6c2;color:#4fd6c2;font:20px ui-monospace,monospace';
+    'pointer-events:none;background:rgba(212,160,74,.10);border:3px dashed #D4A04A;color:#D4A04A;' +
+    "font:600 18px 'Satoshi','Inter',system-ui,sans-serif;letter-spacing:.04em";
   dropHint.textContent = 'drop a .glb / .gltf to add it';
   document.body.appendChild(dropHint);
   addEventListener('dragover', (e) => { e.preventDefault(); dropHint.style.display = 'flex'; });
@@ -419,6 +424,7 @@ export function initCapsuleEditor(capsule) {
 
   setMode('translate');
   populateScenePickers();
+  refreshList();          // populate the panel immediately on attach
   writeSelected();
   capsule.editor = { select, frameObject, setMode, save, previewLayer, buildLayer, undo, redo, applyInspector,
     byId, list: listEditables, setTransform, selectById: (id) => select(byId(id), true),
@@ -431,32 +437,69 @@ export function initCapsuleEditor(capsule) {
 
 // ── overlay DOM + styles ────────────────────────────────
 function injectUI() {
+  // Satoshi for the editor chrome (dev-time overlay only; falls back to system-ui offline).
+  if (!document.getElementById('cap-font')) {
+    const l = document.createElement('link');
+    l.id = 'cap-font'; l.rel = 'stylesheet';
+    l.href = 'https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,900&display=swap';
+    document.head.appendChild(l);
+  }
+  // YG3 luxury dark-admin tokens (mirror of tokens.ts), scoped --cap-* to avoid
+  // clobbering the host game's vars. Near-black surfaces, gold accent, Satoshi,
+  // Apple easing. Editor chrome only — not part of the shipped game.
   const css = `
-    .cap-bar{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;gap:6px;align-items:center;
-      padding:6px;background:rgba(18,18,24,.92);border:1px solid #333;border-radius:8px;font:12px ui-monospace,Menlo,monospace}
-    .cap-bar button,.cap-bar select{color:#ddd;background:#2a2a36;border:1px solid #3a3a48;padding:6px 9px;border-radius:5px;cursor:pointer;font:12px ui-monospace,monospace}
-    .cap-bar button.on{background:#4fd6c2;border-color:#4fd6c2;color:#000}
-    .cap-bar #cap-save{background:#2f7d4f;border-color:#2f7d4f;color:#fff}
-    .cap-bar #cap-save.dirty{box-shadow:0 0 0 2px #ffd23f88}
-    .cap-bar .sep{width:1px;height:22px;background:#3a3a48;margin:0 2px}
-    .cap-bar label{color:#8a8;font-size:10px;margin-right:-2px}
-    .cap-panel{position:fixed;top:56px;left:10px;z-index:99999;width:180px;max-height:60vh;overflow:auto;background:rgba(18,18,24,.92);
-      border:1px solid #333;border-radius:8px;font:12px ui-monospace,Menlo,monospace}
-    .cap-panel h3{margin:0;padding:7px 10px;font-size:11px;color:#9aa;background:#22222c;position:sticky;top:0}
-    .cap-cat{padding:5px 10px 3px;color:#4fd6c2;font-size:10px;text-transform:uppercase;letter-spacing:.05em;background:#1c1c24;border-top:1px solid #333}
-    .cap-cat.cap-warn{color:#ffd23f}
-    .cap-item.cap-untagged{color:#bba24a}
-    .cap-item{padding:6px 10px 6px 16px;color:#cce;cursor:pointer;border-top:1px solid #2a2a34}
-    .cap-item:hover{background:#2a2a36}.cap-item.sel{background:#4fd6c233;color:#fff}
-    .cap-hud{position:fixed;bottom:10px;left:10px;z-index:99999;white-space:pre;color:#cce;background:rgba(18,18,24,.92);
-      border:1px solid #333;border-radius:8px;padding:8px 10px;font:12px ui-monospace,Menlo,monospace;line-height:1.5}
-    .cap-insp{position:fixed;bottom:10px;right:10px;z-index:99999;display:none;background:rgba(18,18,24,.92);
-      border:1px solid #333;border-radius:8px;padding:8px 10px;font:11px ui-monospace,Menlo,monospace;color:#cce}
-    .cap-insp .row{display:flex;align-items:center;gap:4px;margin:2px 0}
-    .cap-insp .row b{width:16px;color:#8aa;font-weight:400}
-    .cap-insp input{width:62px;background:#222;border:1px solid #3a3a48;color:#cce;border-radius:4px;padding:3px 4px;
-      font:11px ui-monospace,monospace}
-    .cap-insp input:focus{outline:none;border-color:#4fd6c2}
+    :root{
+      --cap-raised:rgba(14,14,20,0.96);
+      --cap-surface:rgba(255,255,255,0.015); --cap-hover:rgba(255,255,255,0.04);
+      --cap-border:rgba(255,255,255,0.06); --cap-border-strong:rgba(255,255,255,0.12);
+      --cap-text:#fff; --cap-muted:rgba(255,255,255,0.65); --cap-dim:rgba(255,255,255,0.45);
+      --cap-brand:#D4A04A; --cap-brand-hi:#E8B84B; --cap-brand-soft:rgba(212,160,74,0.08);
+      --cap-brand-soft-hi:rgba(212,160,74,0.14); --cap-brand-border:rgba(212,160,74,0.30);
+      --cap-on-brand:#0A0A0E; --cap-warn:#fbbf24;
+      --cap-font:'Satoshi','Inter',system-ui,-apple-system,sans-serif;
+      --cap-ease:cubic-bezier(0.16,1,0.3,1);
+      --cap-shadow:0 10px 30px rgba(0,0,0,0.45),0 2px 8px rgba(0,0,0,0.35);
+    }
+    .cap-bar,.cap-panel,.cap-hud,.cap-insp{font-family:var(--cap-font);-webkit-font-smoothing:antialiased;
+      color:var(--cap-text);background:var(--cap-raised);border:1px solid var(--cap-border);
+      box-shadow:var(--cap-shadow);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3)}
+    .cap-bar{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;gap:3px;
+      align-items:center;padding:6px;border-radius:14px;font-size:12.5px;
+      flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 28px)}
+    .cap-bar button,.cap-bar select{font:inherit;font-weight:600;color:var(--cap-muted);background:transparent;
+      border:1px solid transparent;padding:7px 11px;border-radius:8px;cursor:pointer;
+      transition:background .12s var(--cap-ease),color .12s var(--cap-ease),border-color .12s var(--cap-ease)}
+    .cap-bar button:hover{background:var(--cap-hover);color:var(--cap-text)}
+    .cap-bar select{color:var(--cap-text);background:var(--cap-surface);border-color:var(--cap-border)}
+    .cap-bar select:hover{border-color:var(--cap-border-strong)}
+    .cap-bar button.on{background:var(--cap-brand-soft);color:var(--cap-brand);border-color:var(--cap-brand-border)}
+    .cap-bar #cap-save{background:var(--cap-brand);border-color:var(--cap-brand);color:var(--cap-on-brand);font-weight:700}
+    .cap-bar #cap-save:hover{background:var(--cap-brand-hi);border-color:var(--cap-brand-hi)}
+    .cap-bar #cap-save.dirty{box-shadow:0 0 0 3px var(--cap-brand-soft-hi)}
+    .cap-bar .sep{width:1px;height:20px;background:var(--cap-border);margin:0 3px}
+    .cap-bar label{color:var(--cap-dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;margin:0 1px 0 5px}
+    .cap-panel{position:fixed;top:64px;left:14px;z-index:99999;width:206px;max-height:62vh;overflow:auto;border-radius:14px;font-size:12.5px}
+    .cap-panel h3{margin:0;padding:12px 14px 10px;font-size:10px;font-weight:700;color:var(--cap-dim);text-transform:uppercase;
+      letter-spacing:.18em;background:var(--cap-raised);position:sticky;top:0;border-bottom:1px solid var(--cap-border)}
+    .cap-cat{padding:11px 14px 4px;color:var(--cap-brand);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em}
+    .cap-cat.cap-warn{color:var(--cap-warn)}
+    .cap-item{padding:7px 14px 7px 16px;color:var(--cap-muted);cursor:pointer;border-radius:7px;margin:1px 6px;
+      transition:background .12s var(--cap-ease),color .12s var(--cap-ease)}
+    .cap-item:hover{background:var(--cap-hover);color:var(--cap-text)}
+    .cap-item.sel{background:var(--cap-brand-soft);color:var(--cap-brand);box-shadow:inset 2px 0 0 var(--cap-brand)}
+    .cap-item.cap-untagged{color:var(--cap-warn);opacity:.85}
+    .cap-hud{position:fixed;bottom:14px;left:14px;z-index:99999;white-space:pre;color:var(--cap-muted);
+      border-radius:12px;padding:10px 13px;font-size:11.5px;line-height:1.55;letter-spacing:.01em}
+    .cap-insp{position:fixed;bottom:14px;right:14px;z-index:99999;display:none;border-radius:12px;padding:11px 13px}
+    .cap-insp .row{display:flex;align-items:center;gap:5px;margin:3px 0}
+    .cap-insp .row b{width:18px;color:var(--cap-dim);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+    .cap-insp input{width:60px;background:var(--cap-surface);border:1px solid var(--cap-border);color:var(--cap-text);border-radius:6px;
+      padding:5px 7px;font:inherit;font-size:11px;font-variant-numeric:tabular-nums;
+      transition:border-color .12s var(--cap-ease),box-shadow .12s var(--cap-ease)}
+    .cap-insp input:hover{border-color:var(--cap-border-strong)}
+    .cap-insp input:focus{outline:none;border-color:var(--cap-brand-border);box-shadow:0 0 0 3px var(--cap-brand-soft)}
+    .cap-panel::-webkit-scrollbar{width:8px}
+    .cap-panel::-webkit-scrollbar-thumb{background:var(--cap-border-strong);border-radius:8px}
   `;
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
 
@@ -466,6 +509,7 @@ function injectUI() {
     `<label>layer</label><select id="cap-layer"></select><div class="sep"></div>` +
     `<button id="cap-t" class="on">Move</button><button id="cap-r">Rotate</button><button id="cap-s">Scale</button>` +
     `<div class="sep"></div><button id="cap-undo" title="Undo (⌘Z)">↶</button><button id="cap-redo" title="Redo (⌘⇧Z)">↷</button>` +
+    `<div class="sep"></div><button id="cap-home" title="Back to the welcome screen">⌂</button><button id="cap-code" title="Open the project in VS Code">&lt;/&gt;</button>` +
     `<div class="sep"></div><button id="cap-play" title="Play the game (drop ?edit)">▶ Play</button><button id="cap-save">Save</button>`;
   document.body.appendChild(bar);
 
@@ -489,7 +533,8 @@ function injectUI() {
     hud, list: panel.querySelector('#cap-list'), saveBtn: bar.querySelector('#cap-save'),
     sceneSel: bar.querySelector('#cap-scene'), layerSel: bar.querySelector('#cap-layer'),
     undoBtn: bar.querySelector('#cap-undo'), redoBtn: bar.querySelector('#cap-redo'),
-    playBtn: bar.querySelector('#cap-play'), inspEl: insp, inspInputs,
+    playBtn: bar.querySelector('#cap-play'), homeBtn: bar.querySelector('#cap-home'),
+    codeBtn: bar.querySelector('#cap-code'), inspEl: insp, inspInputs,
     modeBtns: { translate: bar.querySelector('#cap-t'), rotate: bar.querySelector('#cap-r'), scale: bar.querySelector('#cap-s') },
   };
 }

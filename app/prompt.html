@@ -2,23 +2,19 @@
 <html>
 <head>
 <meta charset="utf-8" />
+<link rel="stylesheet" href="ui/tokens.css" />
 <style>
-  html, body { margin: 0; height: 100%; background: #1c1c24; color: #cce;
-    font: 13px ui-monospace, Menlo, monospace; display: flex; flex-direction: column; }
-  #msg { padding: 12px 14px 6px; color: #9aa; }
-  #in { margin: 0 14px; padding: 8px; background: #222; border: 1px solid #3a3a48; color: #cce;
-    border-radius: 5px; font: 13px ui-monospace, monospace; }
-  #in:focus { outline: none; border-color: #4fd6c2; }
-  #row { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 14px; }
-  button { background: #2a2a36; border: 1px solid #3a3a48; color: #ddd; padding: 7px 14px;
-    border-radius: 5px; cursor: pointer; font: 12px ui-monospace, monospace; }
-  button#ok { background: #2f7d4f; border-color: #2f7d4f; color: #fff; }
+  html, body { height: 100%; background: var(--surface-raised); display: flex; flex-direction: column; }
+  #msg { padding: 16px 16px 8px; color: var(--text-muted); font-family: var(--font-body); font-size: 13.5px; line-height: 1.5; }
+  #in { margin: 4px 16px 0; }
+  #row { display: flex; gap: 8px; justify-content: flex-end; padding: 14px 16px; }
+  .cap-btn { font-size: 13px; padding: 8px 14px; }
 </style>
 </head>
 <body>
 <div id="msg"></div>
-<input id="in" />
-<div id="row"><button id="cancel">Cancel</button><button id="ok">OK</button></div>
+<input id="in" class="cap-input" />
+<div id="row"><button id="cancel" class="cap-btn cap-btn--ghost">Cancel</button><button id="ok" class="cap-btn cap-btn--primary">OK</button></div>
 <script>
   const { ipcRenderer } = require('electron');
   const p = new URLSearchParams(location.search);

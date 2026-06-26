@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Capsule — New project</title>
+<link rel="stylesheet" href="ui/tokens.css" />
+<style>
+  body { min-height: 100vh; display: flex; flex-direction: column;
+    background: radial-gradient(900px 500px at 12% -10%, rgba(212,160,74,0.10), transparent 60%), var(--bg); }
+  .wrap { flex: 1; max-width: 680px; width: 100%; margin: 0 auto; padding: 64px 28px 40px; }
+  .back { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); cursor: pointer;
+    font-family: var(--font); font-size: 13px; margin-bottom: 26px; }
+  .back:hover { color: var(--text); }
+  h1 { margin: 6px 0 28px; font-family: var(--font); font-weight: 900; font-size: 40px;
+    letter-spacing: var(--track-tight); }
+  label.fld { display: block; margin-bottom: 24px; }
+  label.fld > .cap-eyebrow { display: block; margin-bottom: 9px; }
+  #name { width: 100%; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .opt { text-align: left; cursor: pointer; padding: 16px; border-radius: var(--r-2xl);
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease); }
+  .opt:hover { border-color: var(--border-strong); }
+  .opt.on { border-color: var(--brand); background: var(--brand-soft); }
+  .opt .t { font-family: var(--font); font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .opt .t .tick { color: var(--brand); opacity: 0; transition: opacity var(--fast) var(--ease); }
+  .opt.on .t .tick { opacity: 1; }
+  .opt .d { color: var(--text-dim); font-size: 12.5px; line-height: 1.5; margin-top: 6px; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+  #err { color: var(--danger); font-size: 13px; min-height: 18px; margin-top: 4px; font-family: var(--font); }
+  footer { text-align: center; padding: 18px; color: var(--text-dim); font-size: 12.5px; border-top: 1px solid var(--border-subtle); }
+  footer a { color: var(--brand); text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="back" id="back">← Welcome</div>
+    <h1>Start a capsule</h1>
+
+    <label class="fld">
+      <span class="cap-eyebrow">Project name</span>
+      <input id="name" class="cap-input" placeholder="my-space-shooter" autofocus />
+    </label>
+
+    <label class="fld">
+      <span class="cap-eyebrow">Dimension</span>
+      <div class="seg" id="kind">
+        <button class="opt on" data-v="3d"><div class="t">3D <span class="tick">✓</span></div><div class="d">A perspective camera + lit scene. Worlds, characters, levels.</div></button>
+        <button class="opt" data-v="2d"><div class="t">2D <span class="tick">✓</span></div><div class="d">An orthographic camera + flat sprites. Shooters, platformers, puzzles.</div></button>
+      </div>
+    </label>
+
+    <label class="fld">
+      <span class="cap-eyebrow">Platform</span>
+      <div class="seg" id="platform">
+        <button class="opt on" data-v="pc"><div class="t">PC / Desktop <span class="tick">✓</span></div><div class="d">Designed for a wide screen. Exports to a native desktop app.</div></button>
+        <button class="opt" data-v="mobile"><div class="t">Mobile <span class="tick">✓</span></div><div class="d">Opens at a phone viewport (390 × 844). Exports to iOS / Android.</div></button>
+      </div>
+    </label>
+
+    <div id="err"></div>
+    <div class="row">
+      <button class="cap-btn cap-btn--primary" id="create">Create project</button>
+      <button class="cap-btn cap-btn--ghost" id="cancel">Cancel</button>
+    </div>
+  </div>
+  <footer>New capsules are created in your <a id="reveal" href="#">Capsule folder</a>.</footer>
+<script>
+  const host = window.capsuleHost || {};
+  const pick = (groupId) => {
+    const g = document.getElementById(groupId);
+    g.addEventListener('click', (e) => {
+      const b = e.target.closest('.opt'); if (!b) return;
+      [...g.children].forEach((c) => c.classList.toggle('on', c === b));
+    });
+    return () => g.querySelector('.opt.on').dataset.v;
+  };
+  const getKind = pick('kind');
+  const getPlatform = pick('platform');
+  const err = document.getElementById('err');
+
+  document.getElementById('back').onclick = () => host.welcome && host.welcome();
+  document.getElementById('cancel').onclick = () => host.welcome && host.welcome();
+  document.getElementById('reveal').onclick = (e) => { e.preventDefault(); host.revealProjects && host.revealProjects(); };
+
+  async function create() {
+    const name = document.getElementById('name').value.trim();
+    if (!name) { err.textContent = 'Give your project a name.'; return; }
+    err.textContent = 'Creating…';
+    const r = await host.createProject({ name, kind: getKind(), platform: getPlatform() });
+    if (r && !r.ok) err.textContent = r.error || 'Could not create project.';
+    // on success the window navigates to the new project (no further action here)
+  }
+  document.getElementById('create').onclick = create;
+  document.getElementById('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') create(); });
+</script>
+</body>
+</html>

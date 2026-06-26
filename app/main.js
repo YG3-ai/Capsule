@@ -29,6 +29,28 @@ function pushRecent(dir) {
   setConfig({ recents: r.slice(0, 8) });
 }
 
+// ── projects home (like Unreal: all capsules live under one folder) ──────────
+// Default to ~/Capsule — deliberately NOT ~/Documents, which is iCloud-synced and
+// has eaten files before. Configurable via config.projectsRoot.
+const projectsRoot = () => getConfig().projectsRoot || path.join(app.getPath('home'), 'Capsule');
+function ensureProjectsRoot() { const r = projectsRoot(); try { fs.mkdirSync(r, { recursive: true }); } catch {} return r; }
+function readMeta(dir) { try { return JSON.parse(fs.readFileSync(path.join(dir, 'capsule.json'), 'utf8')).meta || {}; } catch { return {}; } }
+const isCapsule = (dir) => fs.existsSync(path.join(dir, 'index.html')) || fs.existsSync(path.join(dir, 'capsule.json'));
+function listProjects() {
+  const root = ensureProjectsRoot();
+  let dirs = [];
+  try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()); } catch {}
+  const out = [];
+  for (const d of dirs) {
+    const dir = path.join(root, d.name);
+    if (!isCapsule(dir)) continue;
+    const meta = readMeta(dir);
+    let mtime = 0; try { mtime = fs.statSync(dir).mtimeMs; } catch {}
+    out.push({ name: d.name, path: dir, kind: meta.kind || '3d', platform: meta.platform || 'pc', mtime });
+  }
+  return out.sort((a, b) => b.mtime - a.mtime);
+}
+
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.json': 'application/json', '.css': 'text/css', '.wasm': 'application/wasm',
@@ -93,22 +115,34 @@ function showWelcome() {
   win.loadFile('welcome.html');
 }
 
-// Scaffold a fresh capsule from the bundled template, then open it.
-async function newProject() {
-  const r = await dialog.showSaveDialog(win, {
-    title: 'New Capsule project', buttonLabel: 'Create',
-    message: 'Choose a location and name for the project folder',
-    defaultPath: path.join(app.getPath('documents'), 'my-capsule-game'),
-  });
-  if (r.canceled || !r.filePath) return;
-  const dir = r.filePath;
+// In-window screens (all loaded into the main window, all use preload → capsuleHost).
+function showNewProject() {
+  projectDir = null; if (server) { server.close(); server = null; }
+  win.setTitle('Capsule — New project'); win.loadFile('newproject.html');
+}
+function showBrowse() {
+  projectDir = null; if (server) { server.close(); server = null; }
+  win.setTitle('Capsule — Projects'); win.loadFile('browse.html');
+}
+// Menu "New Project…" opens the chooser screen (2D/3D · PC/Mobile).
+function newProject() { showNewProject(); }
+
+// Scaffold a fresh capsule from the bundled template into the projects home, then open it.
+async function createProject({ name, kind = '3d', platform = 'pc' } = {}) {
+  const safe = String(name || '').trim().replace(/[^a-zA-Z0-9 ._-]/g, '').replace(/\s+/g, '-') || 'untitled-game';
+  const dir = path.join(ensureProjectsRoot(), safe);
+  if (fs.existsSync(dir)) return { ok: false, error: `"${safe}" already exists in your Capsule folder` };
   try {
     fs.mkdirSync(dir, { recursive: true });
     fs.cpSync(path.join(__dirname, 'template'), dir, { recursive: true });
+    if (kind === '2d') fs.copyFileSync(path.join(__dirname, 'template-2d.html'), path.join(dir, 'index.html'));
+    // record kind + platform in the manifest so the editor and viewport know
+    let m = {}; try { m = JSON.parse(fs.readFileSync(path.join(dir, 'capsule.json'), 'utf8')); } catch {}
+    m.meta = { kind, platform };
+    fs.writeFileSync(path.join(dir, 'capsule.json'), JSON.stringify(m, null, 2) + '\n');
     await openProject(dir);
-  } catch (e) {
-    dialog.showMessageBox(win, { type: 'error', message: 'Could not create project', detail: String(e.message || e) });
-  }
+    return { ok: true, path: dir };
+  } catch (e) { return { ok: false, error: String(e.message || e) }; }
 }
 
 async function openProject(dir, { launchCode = true } = {}) {
@@ -122,7 +156,13 @@ async function openProject(dir, { launchCode = true } = {}) {
   app.addRecentDocument(dir);
   win.setTitle(`Capsule — ${path.basename(dir)}`);
   win.loadURL(`http://127.0.0.1:${port}/${entry}?edit`);
+  applyPlatformViewport(dir);
   if (launchCode) openInVSCode();
+}
+
+// Mobile projects open at a phone viewport so you design for the real screen.
+function applyPlatformViewport(dir) {
+  if (readMeta(dir).platform === 'mobile') setViewport(390, 844);
 }
 
 // Flip the open game between edit mode (?edit, overlay) and play mode (real game).
@@ -135,17 +175,58 @@ function togglePlayEdit() {
   } catch { /* no game loaded yet */ }
 }
 
+// Conversation continuity: Claude Code already stores per-project history as JSONL
+// under ~/.claude/projects/<encoded-path>/. If a session exists for this project, run
+// `claude --continue` so reopening the project drops you back into the same chat.
+function hasClaudeSession(dir) {
+  const home = app.getPath('home');
+  const cands = [dir.replace(/\//g, '-'), dir.replace(/[/.]/g, '-')];   // Claude's dir encoding
+  for (const enc of cands) {
+    try { if (fs.readdirSync(path.join(home, '.claude', 'projects', enc)).some((f) => f.endsWith('.jsonl'))) return true; } catch {}
+  }
+  return false;
+}
+function agentCommandFor(dir) {
+  const base = agentCommand();
+  if (/^claude(\s|$)/.test(base) && !/(--continue|--resume|\s-c\b|\s-r\b)/.test(base) && dir && hasClaudeSession(dir)) {
+    return base.replace(/^claude/, 'claude --continue');   // resume the existing chat
+  }
+  return base;
+}
+
 // The AI box — a window running the configured agent CLI in the project, in a real
 // PTY (xterm + node-pty). The agent sees the live editor through the MCP server.
 function openTerminal() {
   if (!projectDir) { dialog.showMessageBox(win, { message: 'Open a project first.' }); return; }
   if (termWin && !termWin.isDestroyed()) { termWin.focus(); return; }
   termWin = new BrowserWindow({
-    width: 720, height: 820, backgroundColor: '#15151b', title: 'Capsule · AI',
+    width: 720, height: 820, backgroundColor: '#0A0A0E', title: 'Capsule · AI',
     webPreferences: { nodeIntegration: true, contextIsolation: false },
   });
-  termWin.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommand() } });
+  termWin.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommandFor(projectDir) } });
   termWin.on('closed', () => { termWin = null; });
+}
+
+// Export the open project to a native app. Runs the repo's build script in a live
+// terminal window so the user watches progress; output lands in export/dist (desktop)
+// or mobile-export/ (a Capacitor project to open in Xcode / Android Studio).
+function exportGame(target, mobile = false) {
+  if (!projectDir) { dialog.showMessageBox(win, { message: 'Open a project first.' }); return; }
+  const repo = path.join(__dirname, '..');
+  const script = path.join(repo, mobile ? 'mobile-export' : 'export', 'build.sh');
+  if (!fs.existsSync(script)) {
+    dialog.showMessageBox(win, { type: 'info', message: 'Export tooling not found',
+      detail: `Expected:\n${script}\n\nExport runs from the Capsule repo (dev mode). It isn't bundled into the packaged app yet.` });
+    return;
+  }
+  const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+  const cmd = `bash ${q(script)} ${target} --capsule ${q(projectDir)}`;
+  const w = new BrowserWindow({
+    width: 820, height: 540, backgroundColor: '#0A0A0E',
+    title: `Capsule · Export (${mobile ? 'mobile' : 'desktop'})`,
+    webPreferences: { nodeIntegration: true, contextIsolation: false },
+  });
+  w.loadFile('terminal.html', { query: { dir: repo, cmd } });
 }
 
 // A small modal text prompt (Electron has no built-in one).
@@ -179,7 +260,7 @@ async function chooseAgent() {
     cmd = cmd.trim();
   }
   setConfig({ agent: cmd });
-  if (termWin && !termWin.isDestroyed()) termWin.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommand() } });
+  if (termWin && !termWin.isDestroyed()) termWin.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommandFor(projectDir) } });
 }
 
 function openInVSCode() {
@@ -226,6 +307,14 @@ ipcMain.handle('capsule:saveAsset', (_e, { name, buffer }) => {
 ipcMain.handle('capsule:new', () => newProject());
 ipcMain.handle('capsule:recents', () => getRecents());
 ipcMain.handle('capsule:openPath', (_e, p) => openProject(p));
+ipcMain.handle('capsule:projects', () => ({ root: ensureProjectsRoot(), projects: listProjects(), recents: getRecents() }));
+ipcMain.handle('capsule:create', (_e, opts) => createProject(opts));
+ipcMain.handle('capsule:welcome', () => showWelcome());
+ipcMain.handle('capsule:browse', () => showBrowse());
+ipcMain.handle('capsule:newScreen', () => showNewProject());
+ipcMain.handle('capsule:revealProjects', () => shell.openPath(ensureProjectsRoot()));
+ipcMain.handle('capsule:viewport', (_e, { w, h }) => setViewport(w, h));
+ipcMain.handle('capsule:export', (_e, { target, mobile }) => exportGame(target, mobile));
 
 // Resize the window to a target device size so you can design for it — the game
 // fills the window via its own resize handler. (PC vs Mobile "mode" preview.)
@@ -239,14 +328,22 @@ function buildMenu() {
   const tmpl = [
     { label: 'Capsule', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }] },
     { label: 'Project', submenu: [
-      { label: 'New Project…', accelerator: 'CmdOrCtrl+N', click: () => newProject() },
+      { label: 'New Project…', accelerator: 'CmdOrCtrl+N', click: () => showNewProject() },
       { label: 'Open Project…', accelerator: 'CmdOrCtrl+O', click: () => pickProject() },
-      { label: 'Welcome Screen', click: () => showWelcome() },
+      { label: 'Browse Projects…', accelerator: 'CmdOrCtrl+Shift+O', click: () => showBrowse() },
+      { label: 'Welcome Screen', accelerator: 'CmdOrCtrl+Shift+H', click: () => showWelcome() },
       { label: 'Toggle Play / Edit', accelerator: 'CmdOrCtrl+E', click: () => togglePlayEdit() },
       { type: 'separator' },
       { label: 'AI Box', accelerator: 'CmdOrCtrl+J', click: () => openTerminal() },
       { label: 'Set AI Agent…', click: () => chooseAgent() },
       { label: 'Open in VS Code', accelerator: 'CmdOrCtrl+Shift+C', click: () => openInVSCode() },
+      { type: 'separator' },
+      { label: 'Export', submenu: [
+        { label: 'Desktop App (this OS)…', click: () => exportGame(process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux') },
+        { label: 'Desktop App — all platforms…', click: () => exportGame('all') },
+        { label: 'Mobile (iOS + Android)…', click: () => exportGame('both', true) },
+      ] },
+      { type: 'separator' },
       { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => win.reload() },
     ] },
     { label: 'Viewport', submenu: [
@@ -271,13 +368,21 @@ function createWindow() {
     const url = win.webContents.getURL();
     if (!/^http:\/\/127\.0\.0\.1/.test(url) || /[?&]edit\b/.test(url)) return;
     win.webContents.executeJavaScript(`(() => {
-      if (document.getElementById('__cap_edit')) return;
-      const b = document.createElement('button');
-      b.id = '__cap_edit'; b.textContent = '✎ Edit';
-      b.style.cssText = 'position:fixed;top:10px;right:10px;z-index:2147483647;padding:7px 12px;border-radius:6px;' +
-        'border:1px solid #4fd6c2;background:rgba(18,18,24,.92);color:#4fd6c2;font:12px ui-monospace,Menlo,monospace;cursor:pointer';
-      b.onclick = () => { const u = new URL(location.href); u.searchParams.set('edit',''); location.href = u.toString(); };
-      document.body.appendChild(b);
+      if (document.getElementById('__cap_bar')) return;
+      const host = window.capsuleHost || {};
+      const bar = document.createElement('div'); bar.id = '__cap_bar';
+      bar.style.cssText = "position:fixed;top:12px;right:12px;z-index:2147483647;display:flex;gap:6px;font:600 12px 'Satoshi','Inter',system-ui,sans-serif";
+      const mk = (label, fn, primary) => {
+        const b = document.createElement('button'); b.textContent = label; b.onclick = fn;
+        b.style.cssText = 'padding:8px 12px;border-radius:9px;cursor:pointer;font:inherit;backdrop-filter:blur(10px);border:1px solid '
+          + (primary ? '#D4A04A;background:#D4A04A;color:#0A0A0E;font-weight:700'
+                     : 'rgba(255,255,255,0.10);background:rgba(14,14,20,0.92);color:rgba(255,255,255,0.85)');
+        return b;
+      };
+      bar.appendChild(mk('✎ Edit', () => { const u = new URL(location.href); u.searchParams.set('edit',''); location.href = u.toString(); }, true));
+      bar.appendChild(mk('</> Code', () => host.openInVSCode && host.openInVSCode()));
+      bar.appendChild(mk('⌂ Welcome', () => host.welcome && host.welcome()));
+      document.body.appendChild(bar);
     })();`).catch(() => {});
   });
 }

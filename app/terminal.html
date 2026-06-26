@@ -4,16 +4,20 @@
 <meta charset="utf-8" />
 <title>Capsule · AI</title>
 <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
+<link rel="stylesheet" href="ui/tokens.css" />
 <style>
-  html, body { margin: 0; height: 100%; background: #15151b; }
-  #bar { height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 10px;
-    font: 11px ui-monospace, Menlo, monospace; color: #8aa; background: #1c1c24; border-bottom: 1px solid #2a2a34; }
-  #bar b { color: #4fd6c2; }
-  #term { height: calc(100vh - 27px); padding: 6px; box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); }
+  #bar { height: 32px; display: flex; align-items: center; gap: 9px; padding: 0 14px;
+    font-family: var(--font); font-size: 10.5px; font-weight: 700; letter-spacing: var(--track-label);
+    text-transform: uppercase; color: var(--text-dim); background: var(--surface-raised); border-bottom: 1px solid var(--border); }
+  #bar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 8px var(--brand-border); }
+  #bar b { color: var(--brand); font-weight: 700; }
+  #bar #cwd { color: var(--text-faint); letter-spacing: .04em; text-transform: none; }
+  #term { height: calc(100vh - 33px); padding: 10px 12px; box-sizing: border-box; }
 </style>
 </head>
 <body>
-<div id="bar"><b id="agent">agent</b><span id="cwd"></span></div>
+<div id="bar"><span class="dot"></span><b id="agent">agent</b><span id="cwd"></span></div>
 <div id="term"></div>
 <script>
   // nodeIntegration is on for this local window, so we require the libs directly —
@@ -30,7 +34,8 @@
 
   const term = new Terminal({
     fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13, cursorBlink: true,
-    theme: { background: '#15151b', foreground: '#cce', cursor: '#4fd6c2' },
+    theme: { background: '#0A0A0E', foreground: '#e8e8ee', cursor: '#D4A04A',
+      selectionBackground: 'rgba(212,160,74,0.20)' },
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
