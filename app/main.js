@@ -185,7 +185,11 @@ async function chooseAgent() {
 function openInVSCode() {
   if (!projectDir) return { ok: false, error: 'no project' };
   try {
-    spawn('code', [projectDir], { detached: true, stdio: 'ignore' }).unref();
+    const child = spawn('code', [projectDir], { detached: true, stdio: 'ignore' });
+    // ENOENT (no `code` on PATH) is emitted async as an 'error' event, not thrown —
+    // handle it so a missing VS Code CLI never crashes the app.
+    child.on('error', (e) => console.warn('[capsule] VS Code launch skipped:', e.message));
+    child.unref();
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message }; }
 }
