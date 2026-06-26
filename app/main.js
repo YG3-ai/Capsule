@@ -213,6 +213,14 @@ ipcMain.handle('capsule:new', () => newProject());
 ipcMain.handle('capsule:recents', () => getRecents());
 ipcMain.handle('capsule:openPath', (_e, p) => openProject(p));
 
+// Resize the window to a target device size so you can design for it — the game
+// fills the window via its own resize handler. (PC vs Mobile "mode" preview.)
+function setViewport(w, h) {
+  if (!win) return;
+  win.setContentSize(w, h);
+  win.center();
+}
+
 function buildMenu() {
   const tmpl = [
     { label: 'Capsule', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }] },
@@ -226,6 +234,12 @@ function buildMenu() {
       { label: 'Set AI Agent…', click: () => chooseAgent() },
       { label: 'Open in VS Code', accelerator: 'CmdOrCtrl+Shift+C', click: () => openInVSCode() },
       { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => win.reload() },
+    ] },
+    { label: 'Viewport', submenu: [
+      { label: 'Desktop', accelerator: 'CmdOrCtrl+1', click: () => setViewport(1280, 800) },
+      { label: 'Phone — 390 × 844', accelerator: 'CmdOrCtrl+2', click: () => setViewport(390, 844) },
+      { label: 'Phone landscape — 844 × 390', click: () => setViewport(844, 390) },
+      { label: 'Tablet — 820 × 1180', accelerator: 'CmdOrCtrl+3', click: () => setViewport(820, 1180) },
     ] },
     { role: 'viewMenu' }, { role: 'windowMenu' },
   ];
