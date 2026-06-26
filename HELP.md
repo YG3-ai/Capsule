@@ -30,8 +30,6 @@ run. It's unsigned, so the first launch: **right-click the app → Open**.
 
 ### 1. New project
 
-![Welcome screen](docs/img/welcome.png)
-
 On launch you get the welcome screen. **+ New project** scaffolds a blank-but-working capsule
 (a minimal three.js scene + the editor/AI hook already wired) and opens it. **Open project**
 loads an existing capsule and auto-detects its objects.

@@ -23,11 +23,9 @@ any model can open the source and have a working game one second later.
 
 ## Screenshots
 
-**New project → describe it to the AI → it builds + places things in the live scene:**
+**Describe a game to the AI — it writes the code *and* places things in the live scene:**
 
-| Welcome | AI box |
-|---|---|
-| ![Welcome screen](docs/img/welcome.png) | ![AI box](docs/img/aibox.png) |
+![AI box](docs/img/aibox.png)
 
 **Then drag to refine and hit ▶ Play:**
 
