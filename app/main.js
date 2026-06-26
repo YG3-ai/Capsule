@@ -265,6 +265,21 @@ function createWindow() {
     width: 1440, height: 900, backgroundColor: '#15151b', title: 'Capsule',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), nodeIntegration: false, contextIsolation: true },
   });
+  // In Play mode (a served project page without ?edit) the editor overlay isn't loaded,
+  // so inject a visible way back to the editor.
+  win.webContents.on('did-finish-load', () => {
+    const url = win.webContents.getURL();
+    if (!/^http:\/\/127\.0\.0\.1/.test(url) || /[?&]edit\b/.test(url)) return;
+    win.webContents.executeJavaScript(`(() => {
+      if (document.getElementById('__cap_edit')) return;
+      const b = document.createElement('button');
+      b.id = '__cap_edit'; b.textContent = '✎ Edit';
+      b.style.cssText = 'position:fixed;top:10px;right:10px;z-index:2147483647;padding:7px 12px;border-radius:6px;' +
+        'border:1px solid #4fd6c2;background:rgba(18,18,24,.92);color:#4fd6c2;font:12px ui-monospace,Menlo,monospace;cursor:pointer';
+      b.onclick = () => { const u = new URL(location.href); u.searchParams.set('edit',''); location.href = u.toString(); };
+      document.body.appendChild(b);
+    })();`).catch(() => {});
+  });
 }
 
 app.whenReady().then(async () => {

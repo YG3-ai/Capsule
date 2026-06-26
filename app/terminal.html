@@ -38,13 +38,19 @@
   fit.fit();
 
   function start() {
-    const parts = cmd.split(/\s+/);
-    const proc = pty.spawn(parts[0], parts.slice(1), {
+    const shell = process.env.SHELL || '/bin/zsh';
+    // Run the agent inside a login+interactive shell so it inherits the user's full
+    // PATH / env / auth. A packaged GUI app launches with a minimal env, so spawning
+    // `claude` directly fails (its `node` shebang / the binary aren't on PATH) and it
+    // exits immediately. The login shell also leaves a usable prompt if the agent quits.
+    const proc = pty.spawn(shell, ['-il'], {
       name: 'xterm-color', cols: term.cols, rows: term.rows, cwd: dir, env: process.env,
     });
     proc.onData((d) => term.write(d));
     term.onData((d) => proc.write(d));
-    proc.onExit(({ exitCode }) => term.write(`\r\n\x1b[90m[${parts[0]} exited (${exitCode}). ⌘R to restart.]\x1b[0m\r\n`));
+    proc.onExit(({ exitCode }) => term.write(`\r\n\x1b[90m[shell exited (${exitCode}). ⌘R to restart.]\x1b[0m\r\n`));
+    // Launch the agent once the shell has initialised the user's environment.
+    setTimeout(() => proc.write(cmd + '\r'), 350);
     const onResize = () => { fit.fit(); try { proc.resize(term.cols, term.rows); } catch {} };
     window.addEventListener('resize', onResize);
     return proc;
