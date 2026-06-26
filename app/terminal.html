@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Capsule · AI</title>
+<link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
+<style>
+  html, body { margin: 0; height: 100%; background: #15151b; }
+  #bar { height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+    font: 11px ui-monospace, Menlo, monospace; color: #8aa; background: #1c1c24; border-bottom: 1px solid #2a2a34; }
+  #bar b { color: #4fd6c2; }
+  #term { height: calc(100vh - 27px); padding: 6px; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div id="bar"><b id="agent">agent</b><span id="cwd"></span></div>
+<div id="term"></div>
+<script>
+  // nodeIntegration is on for this local window, so we require the libs directly —
+  // no bundler, no server. The agent CLI runs in a real PTY and renders in xterm.
+  const { Terminal } = require('@xterm/xterm');
+  const { FitAddon } = require('@xterm/addon-fit');
+  const pty = require('node-pty');
+
+  const params = new URLSearchParams(location.search);
+  const dir = params.get('dir') || process.env.HOME;
+  const cmd = (params.get('cmd') || 'claude').trim();
+  document.getElementById('agent').textContent = cmd.split(/\s+/)[0];
+  document.getElementById('cwd').textContent = dir.replace(process.env.HOME, '~');
+
+  const term = new Terminal({
+    fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13, cursorBlink: true,
+    theme: { background: '#15151b', foreground: '#cce', cursor: '#4fd6c2' },
+  });
+  const fit = new FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById('term'));
+  fit.fit();
+
+  function start() {
+    const shell = process.env.SHELL || '/bin/zsh';
+    // Run the agent inside a login+interactive shell so it inherits the user's full
+    // PATH / env / auth. A packaged GUI app launches with a minimal env, so spawning
+    // `claude` directly fails (its `node` shebang / the binary aren't on PATH) and it
+    // exits immediately. The login shell also leaves a usable prompt if the agent quits.
+    const proc = pty.spawn(shell, ['-il'], {
+      name: 'xterm-color', cols: term.cols, rows: term.rows, cwd: dir, env: process.env,
+    });
+    proc.onData((d) => term.write(d));
+    term.onData((d) => proc.write(d));
+    proc.onExit(({ exitCode }) => term.write(`\r\n\x1b[90m[shell exited (${exitCode}). ⌘R to restart.]\x1b[0m\r\n`));
+    // Launch the agent once the shell has initialised the user's environment.
+    setTimeout(() => proc.write(cmd + '\r'), 350);
+    const onResize = () => { fit.fit(); try { proc.resize(term.cols, term.rows); } catch {} };
+    window.addEventListener('resize', onResize);
+    return proc;
+  }
+  start();
+  term.focus();
+</script>
+</body>
+</html>
