@@ -3,6 +3,8 @@
 A thin visual editor for three.js games that stay **plain, readable text** -> HTML, CSS,
 JavaScript, with no build step, no bundler, nothing to compile. Easy to use and painless to augment with your own tools.
 
+![The Capsule editor](docs/img/editor.png)
+
 Capsule is free and open source for all game devs!
 
 Please consider donating if Capsule is useful to you.
@@ -19,8 +21,22 @@ with a mouse. Capsule is the viewport that closes that gap. You drag objects whe
 Readability is the whole point. No webpack, no Vite, no transpile step, no opaque artifact — so
 any model can open the source and have a working game one second later.
 
+## Screenshots
+
+**New project → describe it to the AI → it builds + places things in the live scene:**
+
+| Welcome | AI box |
+|---|---|
+| ![Welcome screen](docs/img/welcome.png) | ![AI box](docs/img/aibox.png) |
+
+**Then drag to refine and hit ▶ Play:**
+
+![A running game](docs/img/game.png)
+
 ## Docs
 
+- **[HELP.md](HELP.md)** — **start here:** a screenshot walkthrough of making a game, the editor
+  reference, the AI box, and exporting.
 - **[GUIDE.md](GUIDE.md)** — using Capsule: the hook, tagging assets, naming, scenes & state
   changes, and the editor workflow. Read this to start a project.
 - **[SCENES.md](SCENES.md)** — the spec for scenes/states, the tag/type/detector conventions,
@@ -69,3 +85,7 @@ Multiple files are fine — split when it helps readability and modularity.
 - **Scroll** — zoom
 
 That's the starting point. Make something good.
+
+---
+
+<sub>A **[YG3](https://www.yg3.ai)** product · free &amp; open source.</sub>

@@ -283,6 +283,10 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Branded dock/taskbar icon for dev (`npm start`); packaged builds use build/icon.* .
+  if (process.platform === 'darwin' && app.dock) {
+    try { app.dock.setIcon(path.join(__dirname, 'build', 'icon.png')); } catch {}
+  }
   createWindow();
   buildMenu();
   startMcp(() => win);   // expose the live editor to Claude over MCP

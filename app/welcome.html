@@ -3,41 +3,94 @@
 <head>
 <meta charset="UTF-8" />
 <title>Capsule</title>
+<link rel="preconnect" href="https://api.fontshare.com" />
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=general-sans@400,500,600&display=swap" rel="stylesheet" />
 <style>
-  html, body { margin: 0; height: 100%; background: #15151b; color: #cce;
-    font: 14px ui-monospace, Menlo, Consolas, monospace; }
-  .wrap { max-width: 720px; margin: 0 auto; padding: 64px 24px; }
-  h1 { margin: 0; font-size: 34px; color: #fff; letter-spacing: 1px; }
-  .sub { color: #8aa; margin: 6px 0 36px; }
-  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .card { text-align: left; background: #1c1c24; border: 1px solid #333; border-radius: 10px;
-    padding: 18px; cursor: pointer; color: #cce; display: flex; flex-direction: column; gap: 6px; font: inherit; }
-  .card:hover { border-color: #4fd6c2; background: #20202a; }
-  .card b { color: #4fd6c2; font-size: 15px; }
-  .card span { color: #9aa; font-size: 12px; line-height: 1.5; }
-  #recents { margin-top: 36px; }
-  #recents h3 { font-size: 11px; color: #8aa; text-transform: uppercase; letter-spacing: .06em; }
-  .recent { padding: 8px 10px; border-top: 1px solid #2a2a34; cursor: pointer; color: #cce; }
-  .recent:hover { background: #20202a; }
-  .recent small { color: #667; margin-left: 8px; }
+  :root {
+    --bg: #0A0A0C;        /* warm near-black */
+    --panel: #141315;     /* card surface */
+    --panel-hi: #1b1a1d;  /* card hover */
+    --line: #2D2C2A;      /* warm border */
+    --ink: #F7F4EC;       /* warm off-white */
+    --muted: #6B6155;     /* muted brown-gray */
+    --gold: #D4A04A;      /* YG3 primary */
+    --gold-hi: #E8B84B;
+    --orange: #E0973F;
+    --terra: #C8643D;
+    --display: 'Satoshi', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --body: 'General Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--body); }
+  body {
+    /* a soft warm glow, top-left, in the YG3 spirit */
+    background:
+      radial-gradient(900px 500px at 12% -10%, rgba(212,160,74,0.10), transparent 60%),
+      radial-gradient(700px 500px at 100% 0%, rgba(200,100,61,0.06), transparent 55%),
+      var(--bg);
+    display: flex; flex-direction: column; min-height: 100%;
+  }
+  .wrap { flex: 1; max-width: 760px; width: 100%; margin: 0 auto; padding: 84px 28px 40px; }
+
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; }
+  .mark { width: 22px; height: 22px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--gold-hi), var(--orange) 55%, var(--terra));
+    box-shadow: 0 4px 18px rgba(224,151,63,0.35); }
+  .brand .name { font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--muted); }
+
+  h1 { margin: 0; font-family: var(--display); font-weight: 900; font-size: 56px; line-height: 1.02;
+    letter-spacing: -0.02em; color: var(--ink); }
+  h1 .dot { color: var(--gold); }
+  .sub { color: var(--muted); margin: 14px 0 44px; font-size: 17px; max-width: 46ch; line-height: 1.5; }
+  .sub b { color: var(--ink); font-weight: 600; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px; cursor: pointer; color: var(--ink); display: flex; flex-direction: column; gap: 8px;
+    font-family: var(--body); transition: border-color .15s, background .15s, transform .12s; }
+  .card:hover { border-color: var(--gold); background: var(--panel-hi); transform: translateY(-1px); }
+  .card .ic { font-size: 20px; line-height: 1; color: var(--gold); }
+  .card b { font-family: var(--display); font-weight: 700; color: var(--ink); font-size: 17px; }
+  .card span { color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+
+  #recents { margin-top: 44px; }
+  #recents h3 { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .12em;
+    font-family: var(--display); font-weight: 600; margin: 0 0 4px; }
+  .recent { padding: 11px 12px; border-top: 1px solid var(--line); cursor: pointer; color: var(--ink);
+    border-radius: 8px; font-size: 14px; transition: background .12s; }
+  .recent:hover { background: var(--panel-hi); }
+  .recent small { color: var(--muted); margin-left: 10px; font-size: 12px; }
+
+  footer { text-align: center; padding: 22px; color: var(--muted); font-size: 12.5px;
+    letter-spacing: .02em; border-top: 1px solid rgba(45,44,42,0.5); }
+  footer a { color: var(--gold); text-decoration: none; font-weight: 500; }
+  footer a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Capsule</h1>
-  <div class="sub">A thin visual editor for three.js games.</div>
-  <div class="cards">
-    <button class="card" id="new">
-      <b>+ New project</b>
-      <span>Scaffold a blank three.js capsule, then open the AI box and say "make a 3D fighter game."</span>
-    </button>
-    <button class="card" id="open">
-      <b>⌖ Open project</b>
-      <span>Open an existing capsule — its objects and scenes are detected automatically.</span>
-    </button>
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark"></div>
+      <div class="name">Capsule</div>
+    </div>
+    <h1>Build a game<span class="dot">.</span><br />Drag it into place.</h1>
+    <div class="sub">A thin visual editor for <b>three.js</b> games that stay plain, readable text. Describe it to the AI, then drag objects exactly where they go.</div>
+    <div class="cards">
+      <button class="card" id="new">
+        <span class="ic">＋</span>
+        <b>New project</b>
+        <span>Scaffold a blank three.js capsule, then open the AI box and say "make a 3D fighter game."</span>
+      </button>
+      <button class="card" id="open">
+        <span class="ic">⌖</span>
+        <b>Open project</b>
+        <span>Open an existing capsule — its objects and scenes are detected automatically.</span>
+      </button>
+    </div>
+    <div id="recents"></div>
   </div>
-  <div id="recents"></div>
-</div>
+  <footer>A <a href="https://www.yg3.ai" target="_blank" rel="noopener">YG3</a> product · free &amp; open source</footer>
 <script>
   const host = window.capsuleHost || {};
   document.getElementById('new').onclick = () => host.newProject && host.newProject();
