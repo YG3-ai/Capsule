@@ -49,13 +49,24 @@ The product thesis: gizmos are the precision layer; an **AI box is the zero-lear
       live clients on one session. Uses the user's existing Claude auth (bring-your-own).
       Prereqs: the desktop app (container) must be finished first.
 
+## Mobile
+
+- [ ] **Mobile export (Capacitor)** — `mobile-export/` parallel to `export/`: wraps the web
+      game in a native iOS/Android shell. Feasible because capsules are plain web. (Electron is
+      desktop-only — it does NOT do mobile.) Note: games already *play* in any mobile browser.
+- [ ] **Mobile viewport presets in the editor** — phone/tablet/desktop size selector so you
+      preview + design for the target screen (e.g. 390×844).
+- [ ] **Touch controls** — the real mobile gap. Games use keyboard/mouse; touch input is game
+      code the AI box / LLM can add. Maybe a starter touch-look/joystick snippet.
+
 ## Research
 
-- [ ] **Evaluate Cortexdb (or similar) as a memory layer** — for AI continuity across sessions.
-      Need the actual repo/link to assess. Bar to clear: must beat "readable markdown context
-      (CLAUDE/GUIDE/SCENES/TODO) + Claude Code native session resume + memory files," which is
-      zero-dep and fits the moat. Would live in the editor/tooling side only — never inside the
-      capsule games (those stay dependency-free).
+- [x] **Cortexdb assessed** (github.com/liliang-cn/cortexdb) — Pure-Go single-file SQLite
+      AI-memory + knowledge-graph lib; ships as MCP tools + a Claude Code/Codex **plugin**.
+      Verdict: good optional **memory layer**, but adopt it as an **agent plugin**, not a Capsule
+      dependency — our AI box spawns the user's agent CLI, so it composes for free and gives the
+      agent persistent cross-session project memory. Stays on the tooling side; games untouched.
+      Clears the "beat markdown + session resume" bar for large/long-running projects.
 
 ## Product / distribution
 
