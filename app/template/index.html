@@ -90,9 +90,28 @@ window.capsule = {
   setActiveState(state) { if (this.activeState === state) return; this.activeState = state;
     for (const { id, obj } of this.editable) _apply(obj, this._resolve(id)); },
   loadModel(src) { return new Promise((res, rej) => _loader.load(src, g => res(g.scene), undefined, rej)); },
+  // Dropped GLBs: recorded under scenes[s].added and recreated on load (play + edit).
+  _added: new Set(),
+  async addObject(prop) {
+    const obj = await this.loadModel(prop.src);
+    obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    obj.userData.capsuleAdded = true; _apply(obj, prop); this.scene.add(obj); this._added.add(prop.id);
+    this.registerEditable(obj, prop.id, prop.type || 'model');
+    const sc = this.data.scenes[this.activeScene] || (this.data.scenes[this.activeScene] = { base: {}, states: {}, added: [] });
+    if (!sc.added) sc.added = [];
+    if (!sc.added.find(a => a.id === prop.id)) sc.added.push(prop);
+    return obj;
+  },
+  _loadAdded() {
+    const sc = this.data.scenes?.[this.activeScene]; if (!sc?.added) return;
+    for (const a of sc.added) { if (this._added.has(a.id)) continue; this._added.add(a.id);
+      this.loadModel(a.src).then(obj => { obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        obj.userData.capsuleAdded = true; _apply(obj, a); this.scene.add(obj); this.registerEditable(obj, a.id, a.type || 'model');
+      }).catch(e => console.warn('[capsule] added object failed:', a.id, e.message)); }
+  },
 };
 fetch('./capsule.scenes.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
-  .then(d => { if (d) window.capsule.data = d; window.capsule.scan(); }).catch(() => {});
+  .then(d => { if (d) window.capsule.data = d; window.capsule.scan(); window.capsule._loadAdded(); }).catch(() => {});
 setInterval(() => window.capsule.scan(), 1500);
 // ============================================================================
 

@@ -213,6 +213,16 @@ ipcMain.handle('capsule:save', (_e, { name, json }) => {
 });
 ipcMain.handle('capsule:code', () => openInVSCode());
 ipcMain.handle('capsule:pick', () => pickProject());
+ipcMain.handle('capsule:saveAsset', (_e, { name, buffer }) => {
+  if (!projectDir) return { ok: false, error: 'no project open' };
+  const safe = path.basename(name || 'asset.glb');
+  const dir = path.join(projectDir, 'assets', 'models');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, safe), Buffer.from(buffer));
+    return { ok: true, path: 'assets/models/' + safe };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
 ipcMain.handle('capsule:new', () => newProject());
 ipcMain.handle('capsule:recents', () => getRecents());
 ipcMain.handle('capsule:openPath', (_e, p) => openProject(p));

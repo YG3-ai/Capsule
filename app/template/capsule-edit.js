@@ -376,6 +376,47 @@ export function initCapsuleEditor(capsule) {
     return true;
   }
 
+  // ── GLB drag-drop import ──────────────────────────────
+  const dropHint = document.createElement('div');
+  dropHint.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;justify-content:center;' +
+    'pointer-events:none;background:rgba(79,214,194,.12);border:3px dashed #4fd6c2;color:#4fd6c2;font:20px ui-monospace,monospace';
+  dropHint.textContent = 'drop a .glb / .gltf to add it';
+  document.body.appendChild(dropHint);
+  addEventListener('dragover', (e) => { e.preventDefault(); dropHint.style.display = 'flex'; });
+  addEventListener('dragleave', (e) => { if (e.target === document.documentElement) dropHint.style.display = 'none'; });
+  addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dropHint.style.display = 'none';
+    const file = [...((e.dataTransfer && e.dataTransfer.files) || [])].find((f) => /\.(glb|gltf)$/i.test(f.name));
+    if (!file) { flash('drop a .glb or .gltf file'); return; }
+    if (!window.capsuleHost || !window.capsuleHost.saveAsset) { flash('asset import needs the Capsule app'); return; }
+    flash('importing ' + file.name + '…');
+    const r = await window.capsuleHost.saveAsset(file.name, await file.arrayBuffer());
+    if (!r || !r.ok) { flash('save failed: ' + ((r && r.error) || '?')); return; }
+    const base = file.name.replace(/\.(glb|gltf)$/i, '').toLowerCase().replace(/[^a-z0-9._-]/g, '-') || 'model';
+    const id = base + '-' + Math.random().toString(36).slice(2, 6);
+    const front = new THREE.Vector3(); camera.getWorldDirection(front); front.y = 0;
+    if (front.lengthSq() < 1e-6) front.set(0, 0, -1);
+    front.normalize();
+    const tgt = orbit.target.clone().add(front.multiplyScalar(3));
+    const prop = { id, src: './' + r.path, type: 'model', position: [r3(tgt.x), 0, r3(tgt.z)], rotation: [0, 0, 0], scale: [1, 1, 1] };
+    try {
+      const obj = await capsule.addObject(prop);
+      // sane size + sit on the floor
+      let box = new THREE.Box3().setFromObject(obj);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const s = maxDim > 3 ? 2.5 / maxDim : (maxDim < 0.3 ? 1 / maxDim : 1);
+      obj.scale.setScalar(s); obj.updateMatrixWorld(true);
+      box = new THREE.Box3().setFromObject(obj);
+      obj.position.y = r3(-box.min.y);
+      prop.scale = [r3(s), r3(s), r3(s)];
+      prop.position = [r3(obj.position.x), r3(obj.position.y), r3(obj.position.z)];
+      refreshList(); select(obj, true); markDirty();
+      flash('added ' + file.name + ' → assets/models/');
+    } catch (err) { flash('load failed: ' + err.message); }
+  });
+
   setMode('translate');
   populateScenePickers();
   writeSelected();
