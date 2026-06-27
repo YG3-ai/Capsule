@@ -2,10 +2,13 @@
 
 A blank, ready-to-build three.js game. No build step — edit, save, reload.
 
-- **`index.html`** — entry: the scene, the game JS, and the Capsule editor hook.
-- **`capsule-edit.js`** — the editor overlay (loaded only in `?edit`). Leave it as-is.
-- **`assets/`** — drop `.glb` / textures / audio here.
-- **`capsule.scenes.json`** — placement data the editor saves (created on first save).
+```
+index.html            entry: the scene, the game JS, and the editor hook
+capsule.json          manifest · capsule.scenes.json  placements (editor-written)
+capsule-edit.js       editor overlay (loaded only in ?edit) — leave as-is
+src/                  game code modules            scenes/  per-scene / level data
+assets/  models/ · textures/ · audio/ · animations/ · fonts/
+```
 
 ## Make something
 

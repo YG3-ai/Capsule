@@ -177,7 +177,8 @@ export function initCapsuleEditor(capsule) {
   sceneSel.onchange = () => {
     editScene = sceneSel.value;
     const sc = capsule.scenes[editScene];
-    if (sc && sc.setState) sc.setState((sc.states && sc.states[0]) || 'base');  // drive game to the scene
+    if (sc && sc.setState) sc.setState((sc.states && sc.states[0]) || 'base');  // drive a code-defined scene
+    else if (capsule.setActiveScene) capsule.setActiveScene(editScene);          // data-driven: show only this scene's objects
     editLayer = 'base';
     populateLayerPicker();
     previewLayer();

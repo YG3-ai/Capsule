@@ -70,6 +70,7 @@ window.capsule = {
     return { ...(sc.base?.[id] || {}), ...(sc.states?.[this.activeState]?.[id] || {}) }; },
   registerEditable(obj, id, type) {
     obj.userData.capsuleId = id; if (type) obj.userData.capsuleType = type; if (!obj.name) obj.name = id;
+    if (obj.userData.capsuleScene === undefined) obj.userData.capsuleScene = this.activeScene;   // belongs to the active scene
     this.editable = this.editable.filter(e => e.id !== id);
     this.editable.push({ id, obj, type: obj.userData.capsuleType || 'object' });
     _apply(obj, this._resolve(id)); return obj;
@@ -82,11 +83,21 @@ window.capsule = {
       if (this.editable.some(e => e.obj === o)) return;
       let id = o.userData?.capsuleId;
       if (!id) for (const d of this.detectors) { const r = d(o); if (r?.id) { id = r.id; o.userData.capsuleId = id; if (r.type) o.userData.capsuleType = r.type; break; } }
-      if (id) this.registerEditable(o, id, o.userData.capsuleType);
+      if (!id) return;
+      if (o.userData.capsuleScene === undefined) o.userData.capsuleScene = this.activeScene;
+      if (o.userData.capsuleScene === this.activeScene) this.registerEditable(o, id, o.userData.capsuleType);
     });
-    this.editable = this.editable.filter(e => _inScene(e.obj)); },
+    this.editable = this.editable.filter(e => _inScene(e.obj) && e.obj.userData.capsuleScene === this.activeScene); },
   defineScene(name, def) { this.scenes[name] = def; },
-  setActiveScene(name) { if (this.activeScene === name) return; this.activeScene = name; this.editable = []; },
+  setActiveScene(name) {
+    if (this.activeScene === name) return;
+    this.activeScene = name;
+    // scenes are independent — show only the objects that belong to this one
+    this.scene.traverse(o => { const s = o.userData && o.userData.capsuleScene; if (s !== undefined) o.visible = (s === name); });
+    this.editable = [];
+    this._loadAdded();   // bring in this scene's own added objects
+    this.scan();
+  },
   setActiveState(state) { if (this.activeState === state) return; this.activeState = state;
     for (const { id, obj } of this.editable) _apply(obj, this._resolve(id)); },
   loadModel(src) { return new Promise((res, rej) => _loader.load(src, g => res(g.scene), undefined, rej)); },
