@@ -70,6 +70,16 @@ function startServer(root) {
       try { rel = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); }
       catch { res.writeHead(400); return res.end('Bad request'); }
       if (rel === '/' || rel === '') rel = '/index.html';
+      // Always serve the canonical editor overlay so EVERY project — even ones
+      // scaffolded before an update — gets the latest editor (buttons, add-prop,
+      // scenes/states) without re-copying files into the capsule.
+      if (rel === '/capsule-edit.js') {
+        return fs.readFile(path.join(__dirname, 'template', 'capsule-edit.js'), (err, data) => {
+          if (err) { res.writeHead(404); return res.end('Not found'); }
+          res.writeHead(200, { 'Content-Type': 'text/javascript' });
+          res.end(data);
+        });
+      }
       const fp = path.normalize(path.join(root, rel));
       if (fp !== root && !fp.startsWith(root + path.sep)) { res.writeHead(403); return res.end('Forbidden'); }
       fs.readFile(fp, (err, data) => {

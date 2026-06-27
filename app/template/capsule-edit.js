@@ -55,9 +55,10 @@ export function initCapsuleEditor(capsule) {
 
   // ── orbit camera ──────────────────────────────────────
   const orbit = new OrbitControls(camera, renderer.domElement);
-  orbit.enableDamping = false;
+  orbit.enableDamping = true; orbit.dampingFactor = 0.12;
   orbit.target.set(camera.position.x, 1, camera.position.z - 10);
   orbit.update();
+  let flyOn = false; const keysHeld = new Set();   // WASD/QE fly when Fly is on
 
   function frameObject(obj) {
     const c = new THREE.Vector3();
@@ -111,7 +112,8 @@ export function initCapsuleEditor(capsule) {
 
   // ── UI ────────────────────────────────────────────────
   const ui = injectUI();
-  const { hud, list, saveBtn, modeBtns, sceneSel, layerSel, undoBtn, redoBtn, playBtn, homeBtn, codeBtn, inspEl, inspInputs } = ui;
+  const { hud, list, saveBtn, modeBtns, sceneSel, layerSel, undoBtn, redoBtn, playBtn, homeBtn, codeBtn,
+          addBtn, frameBtn, flyBtn, pop, ask, inspEl, inspInputs } = ui;
   undoBtn.onclick = undo;
   redoBtn.onclick = redo;
   // Play = run the real game (drop ?edit). Saved placements still apply on load.
@@ -144,8 +146,9 @@ export function initCapsuleEditor(capsule) {
   for (const k in inspInputs) inspInputs[k].addEventListener('change', applyInspector);
 
   function layersFor(sceneName) {
-    const states = (capsule.scenes[sceneName] && capsule.scenes[sceneName].states) || [];
-    return ['base', ...states];   // Base (shared) + every real state/loop
+    const code = (capsule.scenes[sceneName] && capsule.scenes[sceneName].states) || [];
+    const data = Object.keys((capsule.data.scenes && capsule.data.scenes[sceneName] && capsule.data.scenes[sceneName].states) || {});
+    return ['base', ...new Set([...code, ...data])];   // Base + code-defined + editor-added states
   }
   function labelFor(layer) {
     if (layer === 'base') return 'Base · all states';
@@ -154,7 +157,9 @@ export function initCapsuleEditor(capsule) {
   }
   function populateScenePickers() {
     sceneSel.innerHTML = '';
-    for (const name of Object.keys(capsule.scenes)) {
+    const names = new Set([...Object.keys(capsule.scenes), ...Object.keys(capsule.data.scenes || {}), editScene]);
+    for (const name of names) {
+      if (!name) continue;
       const o = document.createElement('option'); o.value = name; o.textContent = name; sceneSel.appendChild(o);
     }
     sceneSel.value = editScene;
@@ -347,16 +352,160 @@ export function initCapsuleEditor(capsule) {
   function markDirty() { dirty = true; saveBtn.classList.add('dirty'); }
   function flash(msg) { hud.textContent = msg; setTimeout(() => { if (hud.textContent === msg) writeSelected(); }, 1800); }
 
+  // ── add object / scene / state ────────────────────────
+  const slug = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '-').replace(/^-+|-+$/g, '');
+  // In-overlay text prompt (Electron disables window.prompt; this is styled to match).
+  function askName(label, def = '') {
+    return new Promise((resolve) => {
+      const lbl = ask.querySelector('#cap-ask-lbl'), inp = ask.querySelector('#cap-ask-in');
+      const okB = ask.querySelector('#cap-ask-ok'), caB = ask.querySelector('#cap-ask-cancel');
+      lbl.textContent = label; inp.value = def; ask.style.display = 'flex'; inp.focus(); inp.select();
+      const close = (v) => { ask.style.display = 'none'; inp.removeEventListener('keydown', onKey);
+        okB.removeEventListener('click', ok); caB.removeEventListener('click', cancel); resolve(v); };
+      const onKey = (e) => { if (e.key === 'Enter') close(inp.value); else if (e.key === 'Escape') close(null); };
+      const ok = () => close(inp.value), cancel = () => close(null);
+      inp.addEventListener('keydown', onKey); okB.addEventListener('click', ok); caB.addEventListener('click', cancel);
+    });
+  }
+  const PRIMS = {
+    box:      { make: () => new THREE.BoxGeometry(1, 1, 1),                y: 0.5 },
+    sphere:   { make: () => new THREE.SphereGeometry(0.6, 24, 16),        y: 0.6 },
+    cylinder: { make: () => new THREE.CylinderGeometry(0.4, 0.4, 2.5, 20), y: 1.25 },
+  };
+  function placeInFront(y) {
+    const front = new THREE.Vector3(); camera.getWorldDirection(front); front.y = 0;
+    if (front.lengthSq() < 1e-6) front.set(0, 0, -1); front.normalize();
+    const t = orbit.target.clone().add(front.multiplyScalar(3)); t.y = y; return t;
+  }
+  function meshFor(shape, color) {
+    const spec = PRIMS[shape] || PRIMS.box; const c = color || 0x9aa0aa;
+    // a touch of emissive so the prop reads in lit 3D *and* unlit 2D scenes
+    const m = new THREE.Mesh(spec.make(), new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, emissive: c, emissiveIntensity: 0.3 }));
+    m.castShadow = true; m.receiveShadow = true; return m;
+  }
+  function recordAdded(prop) {
+    const sc = ensureScene(); if (!sc.added) sc.added = [];
+    if (!sc.added.find((a) => a.id === prop.id)) sc.added.push(prop);
+    if (capsule._added) capsule._added.add(prop.id);
+  }
+  // A primitive added in the editor; persisted in the 'added' list (with a geo descriptor)
+  // so it survives reload and shows up in the played game too.
+  function addPrimitive(shape) {
+    const spec = PRIMS[shape] || PRIMS.box;
+    const m = meshFor(shape, 0x9aa0aa);
+    m.position.copy(placeInFront(spec.y)); m.userData.capsuleAdded = true; scene.add(m);
+    const id = shape + '-' + Math.random().toString(36).slice(2, 6);
+    capsule.registerEditable(m, id, 'prop');
+    recordAdded({ id, geo: { shape }, color: '#9aa0aa', type: 'prop',
+      position: [r3(m.position.x), r3(m.position.y), r3(m.position.z)], rotation: [0, 0, 0], scale: [1, 1, 1] });
+    refreshList(); select(m, false); markDirty(); flash('added ' + shape);
+  }
+  function makePrimitiveFromProp(a) {
+    const m = meshFor(a.geo.shape, a.color ? new THREE.Color(a.color).getHex() : 0x9aa0aa);
+    m.userData.capsuleAdded = true; scene.add(m);
+    capsule.registerEditable(m, a.id, a.type || 'prop');   // applies the saved transform
+    return m;
+  }
+  // Recreate editor-added primitives that the game's (possibly older) hook didn't.
+  function ensureAddedPrimitives() {
+    const sc = capsule.data.scenes && capsule.data.scenes[editScene];
+    if (!sc || !sc.added) return;
+    for (const a of sc.added) {
+      if (!a.geo) continue;                                 // GLBs are handled by the game hook
+      if (capsule.editable.some((e) => e.id === a.id)) continue;
+      makePrimitiveFromProp(a);
+    }
+  }
+  async function addSceneFn() {
+    const name = slug(await askName('Name for the new scene'));
+    if (!name) return;
+    if (!capsule.data.scenes) capsule.data.scenes = {};
+    if (!capsule.data.scenes[name]) capsule.data.scenes[name] = { base: {}, states: {}, added: [] };
+    editScene = name; editLayer = 'base';
+    if (capsule.setActiveScene) capsule.setActiveScene(name);
+    populateScenePickers(); refreshList(); writeSelected(); markDirty();
+    flash('scene "' + name + '" — place objects, then Save');
+  }
+  async function addStateFn() {
+    const name = slug(await askName('Name for the new state (e.g. night, boss, cleared)'));
+    if (!name || name === 'base') return flash('pick another name');
+    const sc = ensureScene(); if (!sc.states) sc.states = {};
+    if (!sc.states[name]) sc.states[name] = {};
+    editLayer = name; populateLayerPicker(); previewLayer(); markDirty();
+    flash('state "' + name + '" — edits here save as deltas vs Base');
+  }
+
+  // ── add popover ───────────────────────────────────────
+  addBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (pop.style.display === 'flex') { pop.style.display = 'none'; return; }
+    const r = addBtn.getBoundingClientRect();
+    pop.style.left = Math.round(r.left) + 'px'; pop.style.top = Math.round(r.bottom + 6) + 'px';
+    pop.style.display = 'flex';
+  };
+  pop.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    pop.style.display = 'none';
+    const act = b.dataset.act;
+    if (act === 'scene') addSceneFn(); else if (act === 'state') addStateFn(); else addPrimitive(act);
+  });
+  window.addEventListener('pointerdown', (e) => { if (pop.style.display === 'flex' && !pop.contains(e.target) && e.target !== addBtn) pop.style.display = 'none'; }, true);
+
+  // ── traversal: frame · fly · double-click focus ───────
+  function frameAll() {
+    const objs = (selected && isTracked(selected)) ? [selected] : capsule.editable.map((e) => e.obj);
+    if (!objs.length) return;
+    const box = new THREE.Box3(); for (const o of objs) box.expandByObject(o);
+    if (box.isEmpty()) return;
+    const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+    const rad = Math.max(size.x, size.y, size.z) || 4;
+    orbit.target.copy(c);
+    camera.position.set(c.x + rad, c.y + rad * 0.6, c.z + rad); camera.lookAt(c); orbit.update();
+  }
+  frameBtn.onclick = () => frameAll();
+  flyBtn.onclick = () => { flyOn = !flyOn; flyBtn.classList.toggle('on', flyOn); keysHeld.clear();
+    flash(flyOn ? 'fly on — W A S D move · Q E down/up' : 'fly off'); };
+  renderer.domElement.addEventListener('dblclick', (e) => {
+    ptr.x = (e.clientX / window.innerWidth) * 2 - 1; ptr.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    ray.setFromCamera(ptr, camera);
+    const objs = capsule.editable.map((e) => e.obj);
+    const hit = ray.intersectObjects(objs, true)[0];
+    let o = hit ? hit.object : null; while (o && !objs.includes(o)) o = o.parent;
+    if (o) { select(o); frameObject(o); }
+  });
+
+  // overlay render loop: orbit damping + WASD fly movement
+  (function loop() {
+    if (flyOn && keysHeld.size) {
+      const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
+      const right = new THREE.Vector3().crossVectors(fwd, camera.up).normalize();
+      const move = new THREE.Vector3();
+      if (keysHeld.has('w')) move.add(fwd);
+      if (keysHeld.has('s')) move.sub(fwd);
+      if (keysHeld.has('d')) move.add(right);
+      if (keysHeld.has('a')) move.sub(right);
+      if (keysHeld.has('e')) move.y += 1;
+      if (keysHeld.has('q')) move.y -= 1;
+      if (move.lengthSq()) { move.normalize().multiplyScalar(0.15); camera.position.add(move); orbit.target.add(move); }
+    }
+    orbit.update();
+    requestAnimationFrame(loop);
+  })();
+
   // ── keyboard ──────────────────────────────────────────
+  window.addEventListener('keyup', (e) => { keysHeld.delete(e.key.toLowerCase()); }, true);
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
-    else if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
-    else if (e.key === 'w' || e.key === 'W') setMode('translate');
-    else if (e.key === 'e' || e.key === 'E') setMode('rotate');
-    else if (e.key === 'r' || e.key === 'R') setMode('scale');
-    else if (e.key === 'Escape') select(null);
-    else if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); save(); }
+    const k = e.key.toLowerCase();
+    if (flyOn && !e.metaKey && !e.ctrlKey && 'wasdqe'.includes(k)) { keysHeld.add(k); return; }   // fly owns WASD/QE
+    if ((e.metaKey || e.ctrlKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+    else if ((e.metaKey || e.ctrlKey) && k === 'y') { e.preventDefault(); redo(); }
+    else if ((e.metaKey || e.ctrlKey) && k === 's') { e.preventDefault(); save(); }
+    else if (k === 'w') setMode('translate');
+    else if (k === 'e') setMode('rotate');
+    else if (k === 'r') setMode('scale');
+    else if (k === 'f') frameAll();
+    else if (k === 'escape') select(null);
   }, true);
 
   // ── API used by the MCP server (drive the editor from Claude) ─
@@ -424,9 +573,11 @@ export function initCapsuleEditor(capsule) {
 
   setMode('translate');
   populateScenePickers();
-  refreshList();          // populate the panel immediately on attach
+  ensureAddedPrimitives();   // recreate editor-added primitives the game hook didn't
+  refreshList();             // populate the panel immediately on attach
   writeSelected();
   capsule.editor = { select, frameObject, setMode, save, previewLayer, buildLayer, undo, redo, applyInspector,
+    addPrimitive, addScene: addSceneFn, addState: addStateFn, frameAll,
     byId, list: listEditables, setTransform, selectById: (id) => select(byId(id), true),
     get scene() { return editScene; }, get layer() { return editLayer; },
     get undoDepth() { return undoStack.length; }, get redoDepth() { return redoStack.length; },
@@ -500,6 +651,24 @@ function injectUI() {
     .cap-insp input:focus{outline:none;border-color:var(--cap-brand-border);box-shadow:0 0 0 3px var(--cap-brand-soft)}
     .cap-panel::-webkit-scrollbar{width:8px}
     .cap-panel::-webkit-scrollbar-thumb{background:var(--cap-border-strong);border-radius:8px}
+    .cap-bar button.on{background:var(--cap-brand-soft);color:var(--cap-brand);border-color:var(--cap-brand-border)}
+    .cap-pop{position:fixed;z-index:100000;display:none;flex-direction:column;min-width:170px;padding:6px;
+      background:var(--cap-raised);border:1px solid var(--cap-border);border-radius:12px;box-shadow:var(--cap-shadow);
+      backdrop-filter:blur(14px) saturate(1.3);font-family:var(--cap-font);color:var(--cap-text)}
+    .cap-pop .h{padding:8px 10px 4px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--cap-dim)}
+    .cap-pop button{display:block;width:100%;text-align:left;font:inherit;font-size:13px;font-weight:600;color:var(--cap-muted);
+      background:transparent;border:0;padding:8px 10px;border-radius:8px;cursor:pointer;transition:background .12s var(--cap-ease),color .12s var(--cap-ease)}
+    .cap-pop button:hover{background:var(--cap-hover);color:var(--cap-text)}
+    .cap-ask{position:fixed;inset:0;z-index:100001;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+    .cap-ask .box{background:var(--cap-raised);border:1px solid var(--cap-border);border-radius:14px;padding:18px;width:320px;
+      box-shadow:var(--cap-shadow);font-family:var(--cap-font)}
+    .cap-ask .lbl{color:var(--cap-muted);font-size:13px;margin-bottom:10px}
+    .cap-ask input{width:100%;background:var(--cap-surface);border:1px solid var(--cap-border);color:var(--cap-text);
+      border-radius:8px;padding:9px 11px;font:inherit;font-size:14px}
+    .cap-ask input:focus{outline:none;border-color:var(--cap-brand-border);box-shadow:0 0 0 3px var(--cap-brand-soft)}
+    .cap-ask .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+    .cap-ask .row button{font:inherit;font-weight:700;font-size:13px;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid var(--cap-border);background:transparent;color:var(--cap-muted)}
+    .cap-ask .row button#cap-ask-ok{background:var(--cap-brand);border-color:var(--cap-brand);color:var(--cap-on-brand)}
   `;
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
 
@@ -508,10 +677,25 @@ function injectUI() {
     `<label>scene</label><select id="cap-scene"></select>` +
     `<label>layer</label><select id="cap-layer"></select><div class="sep"></div>` +
     `<button id="cap-t" class="on">Move</button><button id="cap-r">Rotate</button><button id="cap-s">Scale</button>` +
+    `<div class="sep"></div><button id="cap-add" title="Add object / scene / state">＋ Add</button>` +
+    `<button id="cap-frame" title="Frame all (F) / selected">⊡</button><button id="cap-fly" title="Fly — hold W A S D / Q E to move">✥</button>` +
     `<div class="sep"></div><button id="cap-undo" title="Undo (⌘Z)">↶</button><button id="cap-redo" title="Redo (⌘⇧Z)">↷</button>` +
     `<div class="sep"></div><button id="cap-home" title="Back to the welcome screen">⌂</button><button id="cap-code" title="Open the project in VS Code">&lt;/&gt;</button>` +
     `<div class="sep"></div><button id="cap-play" title="Play the game (drop ?edit)">▶ Play</button><button id="cap-save">Save</button>`;
   document.body.appendChild(bar);
+
+  const pop = document.createElement('div'); pop.className = 'cap-pop';
+  pop.innerHTML =
+    `<div class="h">Add object</div>` +
+    `<button data-act="box">▦&nbsp;&nbsp;Box</button><button data-act="sphere">●&nbsp;&nbsp;Sphere</button><button data-act="cylinder">▮&nbsp;&nbsp;Pillar</button>` +
+    `<div class="h">Structure</div>` +
+    `<button data-act="scene">＋&nbsp;&nbsp;New scene…</button><button data-act="state">＋&nbsp;&nbsp;New state…</button>`;
+  document.body.appendChild(pop);
+
+  const ask = document.createElement('div'); ask.className = 'cap-ask';
+  ask.innerHTML = `<div class="box"><div class="lbl" id="cap-ask-lbl"></div><input id="cap-ask-in" autocomplete="off" />` +
+    `<div class="row"><button id="cap-ask-cancel">Cancel</button><button id="cap-ask-ok">OK</button></div></div>`;
+  document.body.appendChild(ask);
 
   const panel = document.createElement('div'); panel.className = 'cap-panel';
   panel.innerHTML = `<h3>EDITABLE</h3><div id="cap-list"></div>`;
@@ -534,7 +718,9 @@ function injectUI() {
     sceneSel: bar.querySelector('#cap-scene'), layerSel: bar.querySelector('#cap-layer'),
     undoBtn: bar.querySelector('#cap-undo'), redoBtn: bar.querySelector('#cap-redo'),
     playBtn: bar.querySelector('#cap-play'), homeBtn: bar.querySelector('#cap-home'),
-    codeBtn: bar.querySelector('#cap-code'), inspEl: insp, inspInputs,
+    codeBtn: bar.querySelector('#cap-code'), addBtn: bar.querySelector('#cap-add'),
+    frameBtn: bar.querySelector('#cap-frame'), flyBtn: bar.querySelector('#cap-fly'),
+    pop, ask, inspEl: insp, inspInputs,
     modeBtns: { translate: bar.querySelector('#cap-t'), rotate: bar.querySelector('#cap-r'), scale: bar.querySelector('#cap-s') },
   };
 }

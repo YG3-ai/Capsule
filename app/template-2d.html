@@ -92,9 +92,18 @@ window.capsule = {
     if (!sc.added.find(a => a.id === prop.id)) sc.added.push(prop);
     return obj;
   },
+  _prim(geo, color) {                                  // recreate an editor-added primitive
+    const T = THREE, s = geo.shape, c = color ? new T.Color(color).getHex() : 0x9aa0aa;
+    const g = s === 'sphere' ? new T.SphereGeometry(0.6, 24, 16)
+      : s === 'cylinder' ? new T.CylinderGeometry(0.4, 0.4, 2.5, 20) : new T.BoxGeometry(1, 1, 1);
+    return new T.Mesh(g, new T.MeshStandardMaterial({ color: c, roughness: 0.85, emissive: c, emissiveIntensity: 0.3 }));
+  },
   _loadAdded() {
     const sc = this.data.scenes?.[this.activeScene]; if (!sc?.added) return;
-    for (const a of sc.added) { if (this._added.has(a.id)) continue; this._added.add(a.id);
+    for (const a of sc.added) {
+      if (this._added.has(a.id)) continue; this._added.add(a.id);
+      if (a.geo) { const m = this._prim(a.geo, a.color); m.userData.capsuleAdded = true; _apply(m, a);
+        this.scene.add(m); this.registerEditable(m, a.id, a.type || 'prop'); continue; }
       this.loadModel(a.src).then(obj => { obj.userData.capsuleAdded = true; _apply(obj, a); this.scene.add(obj);
         this.registerEditable(obj, a.id, a.type || 'model');
       }).catch(e => console.warn('[capsule] added object failed:', a.id, e.message)); }
