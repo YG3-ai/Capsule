@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('capsuleHost', {
   saveAsset: (name, buffer) => ipcRenderer.invoke('capsule:saveAsset', { name, buffer }),
   openInVSCode: () => ipcRenderer.invoke('capsule:code'),
   pickProject: () => ipcRenderer.invoke('capsule:pick'),
+  importProject: () => ipcRenderer.invoke('capsule:import'),   // copy into the Capsule folder, then open
+
   newProject: () => ipcRenderer.invoke('capsule:new'),
   recents: () => ipcRenderer.invoke('capsule:recents'),
   openPath: (p) => ipcRenderer.invoke('capsule:openPath', p),
@@ -26,4 +28,7 @@ contextBridge.exposeInMainWorld('capsuleHost', {
   // viewport + export
   setViewport: (w, h) => ipcRenderer.invoke('capsule:viewport', { w, h }),
   exportGame: (target, mobile) => ipcRenderer.invoke('capsule:export', { target, mobile }),
+  // assets + AI box
+  importAsset: () => ipcRenderer.invoke('capsule:importAsset'),   // { ok, path, name } or { canceled }
+  toggleAI: () => ipcRenderer.invoke('capsule:toggleAI'),
 });

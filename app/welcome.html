@@ -66,9 +66,9 @@
         <span>Your Capsule folder — every game you've made, in one place. Click to open.</span>
       </button>
       <button class="cap-card cap-card--interactive card" id="open">
-        <span class="ic">⌖</span>
-        <b>Open elsewhere</b>
-        <span>Open a capsule from anywhere on disk — its objects and scenes auto-detect.</span>
+        <span class="ic">⤵</span>
+        <b>Import existing project</b>
+        <span>Copy a capsule from anywhere into your Capsule folder, then open it.</span>
       </button>
     </div>
     <div id="recents"></div>
@@ -78,7 +78,7 @@
   const host = window.capsuleHost || {};
   document.getElementById('new').onclick = () => host.newScreen && host.newScreen();
   document.getElementById('browse').onclick = () => host.browse && host.browse();
-  document.getElementById('open').onclick = () => host.pickProject && host.pickProject();
+  document.getElementById('open').onclick = () => host.importProject && host.importProject();
   if (host.recents) host.recents().then((list) => {
     if (!list || !list.length) return;
     const el = document.getElementById('recents');

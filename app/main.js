@@ -5,7 +5,7 @@
 // editor overlay a real filesystem to save into — no browser file picker. Also
 // opens the project in VS Code so you edit code and place objects side by side.
 
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, WebContentsView, dialog, ipcMain, Menu, shell } = require('electron');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
@@ -13,7 +13,8 @@ const { spawn } = require('child_process');
 const { startMcp, MCP_PORT } = require('./mcp.js');
 
 let win = null;
-let termWin = null;
+let aiView = null;       // the AI box, docked inside the editor window (a WebContentsView)
+let aiVisible = false;
 let projectDir = null;
 let server = null;
 
@@ -119,6 +120,7 @@ function ensureMcpConfig(dir) {
 
 // Welcome screen — shown when no project is open.
 function showWelcome() {
+  destroyAI();
   projectDir = null;
   if (server) { server.close(); server = null; }
   win.setTitle('Capsule');
@@ -127,11 +129,11 @@ function showWelcome() {
 
 // In-window screens (all loaded into the main window, all use preload → capsuleHost).
 function showNewProject() {
-  projectDir = null; if (server) { server.close(); server = null; }
+  destroyAI(); projectDir = null; if (server) { server.close(); server = null; }
   win.setTitle('Capsule — New project'); win.loadFile('newproject.html');
 }
 function showBrowse() {
-  projectDir = null; if (server) { server.close(); server = null; }
+  destroyAI(); projectDir = null; if (server) { server.close(); server = null; }
   win.setTitle('Capsule — Projects'); win.loadFile('browse.html');
 }
 // Menu "New Project…" opens the chooser screen (2D/3D · PC/Mobile).
@@ -156,6 +158,7 @@ async function createProject({ name, kind = '3d', platform = 'pc' } = {}) {
 }
 
 async function openProject(dir, { launchCode = true } = {}) {
+  destroyAI();
   projectDir = dir;
   pushRecent(dir);
   ensureMcpConfig(dir);
@@ -167,7 +170,7 @@ async function openProject(dir, { launchCode = true } = {}) {
   win.setTitle(`Capsule — ${path.basename(dir)}`);
   win.loadURL(`http://127.0.0.1:${port}/${entry}?edit`);
   applyPlatformViewport(dir);
-  if (launchCode) openInVSCode();
+  if (launchCode) showAI();   // AI box is docked by default; VS Code stays a manual action
 }
 
 // Mobile projects open at a phone viewport so you design for the real screen.
@@ -204,17 +207,33 @@ function agentCommandFor(dir) {
   return base;
 }
 
-// The AI box — a window running the configured agent CLI in the project, in a real
-// PTY (xterm + node-pty). The agent sees the live editor through the MCP server.
-function openTerminal() {
-  if (!projectDir) { dialog.showMessageBox(win, { message: 'Open a project first.' }); return; }
-  if (termWin && !termWin.isDestroyed()) { termWin.focus(); return; }
-  termWin = new BrowserWindow({
-    width: 720, height: 820, backgroundColor: '#0A0A0E', title: 'Capsule · AI',
-    webPreferences: { nodeIntegration: true, contextIsolation: false },
-  });
-  termWin.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommandFor(projectDir) } });
-  termWin.on('closed', () => { termWin = null; });
+// The AI box — docked as a panel inside the editor window (not a separate window).
+// It runs the agent CLI in a real PTY (xterm + node-pty), so it needs its own
+// nodeIntegration; a WebContentsView gives it that while staying embedded. The ✨
+// button shows/hides it; the agent sees the live editor through the MCP server.
+const AI_TOP = 92;   // sit below the editor toolbar so the ✨ toggle stays clickable
+function layoutAI() {
+  if (!aiView || !win) return;
+  const [w, h] = win.getContentSize();
+  const pw = Math.min(420, Math.max(300, Math.round(w * 0.32)));
+  aiView.setBounds({ x: w - pw, y: AI_TOP, width: pw, height: h - AI_TOP });
+}
+function ensureAI() {
+  if (aiView) return;
+  aiView = new WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } });
+  win.contentView.addChildView(aiView);
+  layoutAI();
+  aiView.webContents.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommandFor(projectDir) } });
+}
+function reloadAI() {
+  if (aiView) aiView.webContents.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommandFor(projectDir) } });
+}
+function showAI() { if (!projectDir) return; ensureAI(); aiVisible = true; aiView.setVisible(true); layoutAI(); }
+function hideAI() { if (aiView) aiView.setVisible(false); aiVisible = false; }
+function toggleAI() { aiVisible ? hideAI() : showAI(); }
+function destroyAI() {
+  if (aiView) { try { win.contentView.removeChildView(aiView); aiView.webContents.close(); } catch {} }
+  aiView = null; aiVisible = false;
 }
 
 // Export the open project to a native app. Runs the repo's build script in a live
@@ -270,19 +289,28 @@ async function chooseAgent() {
     cmd = cmd.trim();
   }
   setConfig({ agent: cmd });
-  if (termWin && !termWin.isDestroyed()) termWin.loadFile('terminal.html', { query: { dir: projectDir, cmd: agentCommandFor(projectDir) } });
+  reloadAI();   // relaunch the docked AI box with the new agent
 }
 
 function openInVSCode() {
   if (!projectDir) return { ok: false, error: 'no project' };
-  try {
-    const child = spawn('code', [projectDir], { detached: true, stdio: 'ignore' });
-    // ENOENT (no `code` on PATH) is emitted async as an 'error' event, not thrown —
-    // handle it so a missing VS Code CLI never crashes the app.
-    child.on('error', (e) => console.warn('[capsule] VS Code launch skipped:', e.message));
-    child.unref();
+  const dir = projectDir;
+  const finder = () => shell.openPath(dir);   // last resort: reveal in the OS file manager
+  if (process.platform === 'darwin') {
+    // `open -a` works regardless of PATH (the packaged GUI app has a minimal PATH, so
+    // spawning `code` directly fails with ENOENT). Fall back to the `code` CLI via a
+    // login shell, then to Finder.
+    const c = spawn('open', ['-a', 'Visual Studio Code', dir], { detached: true, stdio: 'ignore' });
+    c.on('error', () => {
+      const sh = spawn(process.env.SHELL || '/bin/zsh', ['-ilc', `code '${dir.replace(/'/g, "'\\''")}'`], { detached: true, stdio: 'ignore' });
+      sh.on('error', finder); sh.unref();
+    });
+    c.unref();
     return { ok: true };
-  } catch (e) { return { ok: false, error: e.message }; }
+  }
+  const child = spawn('code', [dir], { detached: true, stdio: 'ignore', shell: true });
+  child.on('error', finder); child.unref();
+  return { ok: true };
 }
 
 async function pickProject() {
@@ -292,6 +320,32 @@ async function pickProject() {
   if (r.canceled || !r.filePaths[0]) return null;
   await openProject(r.filePaths[0]);
   return r.filePaths[0];
+}
+
+// Import an existing project: copy it into the Capsule projects home (so it lives
+// alongside everything else, like Unreal), then open the copy. The original is left
+// untouched; node_modules / .git are skipped.
+async function importProject() {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Import an existing project', buttonLabel: 'Import', properties: ['openDirectory'],
+  });
+  if (r.canceled || !r.filePaths[0]) return null;
+  const src = r.filePaths[0];
+  if (!isCapsule(src)) {
+    dialog.showMessageBox(win, { type: 'warning', message: "That folder isn't a capsule", detail: 'It has no index.html or capsule.json.' });
+    return null;
+  }
+  const name = path.basename(src);
+  let dest = path.join(ensureProjectsRoot(), name), n = 2;
+  while (fs.existsSync(dest)) dest = path.join(ensureProjectsRoot(), `${name}-${n++}`);
+  try {
+    fs.cpSync(src, dest, { recursive: true, filter: (s) => { const b = path.basename(s); return b !== 'node_modules' && b !== '.git'; } });
+    await openProject(dest);
+    return dest;
+  } catch (e) {
+    dialog.showMessageBox(win, { type: 'error', message: 'Import failed', detail: String(e.message || e) });
+    return null;
+  }
 }
 
 // ── IPC: the overlay's bridge to disk + tooling ──────────
@@ -304,6 +358,7 @@ ipcMain.handle('capsule:save', (_e, { name, json }) => {
 });
 ipcMain.handle('capsule:code', () => openInVSCode());
 ipcMain.handle('capsule:pick', () => pickProject());
+ipcMain.handle('capsule:import', () => importProject());
 ipcMain.handle('capsule:saveAsset', (_e, { name, buffer }) => {
   if (!projectDir) return { ok: false, error: 'no project open' };
   const safe = path.basename(name || 'asset.glb');
@@ -325,6 +380,26 @@ ipcMain.handle('capsule:newScreen', () => showNewProject());
 ipcMain.handle('capsule:revealProjects', () => shell.openPath(ensureProjectsRoot()));
 ipcMain.handle('capsule:viewport', (_e, { w, h }) => setViewport(w, h));
 ipcMain.handle('capsule:export', (_e, { target, mobile }) => exportGame(target, mobile));
+ipcMain.handle('capsule:toggleAI', () => toggleAI());
+// "+ Add ▸ Asset" — pick a file and copy it into the project's assets/ (like a drag-drop).
+ipcMain.handle('capsule:importAsset', async () => {
+  if (!projectDir) return { ok: false, error: 'no project open' };
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Import asset', buttonLabel: 'Import', properties: ['openFile'],
+    filters: [{ name: 'Assets', extensions: ['glb', 'gltf', 'png', 'jpg', 'jpeg', 'webp', 'hdr', 'mp3', 'ogg', 'wav'] }],
+  });
+  if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+  const src = r.filePaths[0];
+  const ext = path.extname(src).toLowerCase();
+  const sub = /\.(glb|gltf)$/.test(ext) ? 'models' : /\.(png|jpe?g|webp|hdr)$/.test(ext) ? 'textures' : 'audio';
+  const name = path.basename(src);
+  const destDir = path.join(projectDir, 'assets', sub);
+  try {
+    fs.mkdirSync(destDir, { recursive: true });
+    fs.copyFileSync(src, path.join(destDir, name));
+    return { ok: true, path: `assets/${sub}/${name}`, name };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
 
 // Resize the window to a target device size so you can design for it — the game
 // fills the window via its own resize handler. (PC vs Mobile "mode" preview.)
@@ -344,7 +419,7 @@ function buildMenu() {
       { label: 'Welcome Screen', accelerator: 'CmdOrCtrl+Shift+H', click: () => showWelcome() },
       { label: 'Toggle Play / Edit', accelerator: 'CmdOrCtrl+E', click: () => togglePlayEdit() },
       { type: 'separator' },
-      { label: 'AI Box', accelerator: 'CmdOrCtrl+J', click: () => openTerminal() },
+      { label: 'AI Box (toggle)', accelerator: 'CmdOrCtrl+J', click: () => toggleAI() },
       { label: 'Set AI Agent…', click: () => chooseAgent() },
       { label: 'Open in VS Code', accelerator: 'CmdOrCtrl+Shift+C', click: () => openInVSCode() },
       { type: 'separator' },
@@ -369,9 +444,11 @@ function buildMenu() {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1440, height: 900, backgroundColor: '#15151b', title: 'Capsule',
+    width: 1440, height: 900, backgroundColor: '#0A0A0E', title: 'Capsule',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), nodeIntegration: false, contextIsolation: true },
   });
+  win.on('resize', layoutAI);   // keep the docked AI panel sized to the window
+  win.on('closed', () => { aiView = null; aiVisible = false; });   // window gone → its child views are too
   // In Play mode (a served project page without ?edit) the editor overlay isn't loaded,
   // so inject a visible way back to the editor.
   win.webContents.on('did-finish-load', () => {
@@ -414,7 +491,9 @@ app.whenReady().then(async () => {
   const initial = process.env.CAPSULE_PROJECT || argDir;
   if (initial) await openProject(initial, { launchCode: !process.env.CAPSULE_NO_CODE });
   else showWelcome();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // Clicking the dock icon after the window was closed: recreate it on the welcome
+  // screen (createWindow alone leaves a blank window with nothing loaded).
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) { createWindow(); showWelcome(); } });
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

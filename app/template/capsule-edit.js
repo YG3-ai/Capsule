@@ -113,7 +113,9 @@ export function initCapsuleEditor(capsule) {
   // ── UI ────────────────────────────────────────────────
   const ui = injectUI();
   const { hud, list, saveBtn, modeBtns, sceneSel, layerSel, undoBtn, redoBtn, playBtn, homeBtn, codeBtn,
-          addBtn, frameBtn, flyBtn, pop, ask, inspEl, inspInputs } = ui;
+          addBtn, frameBtn, flyBtn, aiBtn, pop, ask, inspEl, inspInputs } = ui;
+  // The editor has its own HUD — hide the game's top-left HUD so they don't overlap.
+  const gameHud = document.getElementById('hud'); if (gameHud) gameHud.style.display = 'none';
   undoBtn.onclick = undo;
   redoBtn.onclick = redo;
   // Play = run the real game (drop ?edit). Saved placements still apply on load.
@@ -259,8 +261,14 @@ export function initCapsuleEditor(capsule) {
       for (const { id, obj } of groups[type]) {
         const div = document.createElement('div');
         div.className = 'cap-item' + (obj === selected ? ' sel' : '');
-        div.textContent = id;
         div.onclick = () => select(obj, true);
+        const nm = document.createElement('span'); nm.className = 'cap-item-name'; nm.textContent = id; div.appendChild(nm);
+        const acts = document.createElement('span'); acts.className = 'cap-item-acts';
+        const dup = document.createElement('button'); dup.className = 'cap-item-act'; dup.textContent = '⧉'; dup.title = 'Duplicate';
+        dup.onclick = (e) => { e.stopPropagation(); duplicateObj(obj); };
+        const del = document.createElement('button'); del.className = 'cap-item-act'; del.textContent = '🗑'; del.title = 'Delete';
+        del.onclick = (e) => { e.stopPropagation(); deleteObj(obj); };
+        acts.appendChild(dup); acts.appendChild(del); div.appendChild(acts);
         list.appendChild(div);
       }
     }
@@ -299,8 +307,11 @@ export function initCapsuleEditor(capsule) {
   function buildLayer() {
     const sc = ensureScene();
     if (editLayer === 'base') {
-      // Base = full transform of every editable.
-      for (const { id, obj } of capsule.editable) sc.base[id] = xform(obj);
+      // Base = full transform of every editable (preserve a deleted entity's hidden flag).
+      for (const { id, obj } of capsule.editable) {
+        const prev = sc.base[id];
+        sc.base[id] = (prev && prev.visible === false) ? { ...xform(obj), visible: false } : xform(obj);
+      }
     } else {
       // State = delta: only fields that differ from base.
       const delta = {};
@@ -402,8 +413,12 @@ export function initCapsuleEditor(capsule) {
   }
   function makePrimitiveFromProp(a) {
     const m = meshFor(a.geo.shape, a.color ? new THREE.Color(a.color).getHex() : 0x9aa0aa);
-    m.userData.capsuleAdded = true; scene.add(m);
-    capsule.registerEditable(m, a.id, a.type || 'prop');   // applies the saved transform
+    m.userData.capsuleAdded = true;
+    if (a.position) m.position.set(a.position[0], a.position[1], a.position[2]);   // added items carry their own transform
+    if (a.rotation) m.rotation.set(a.rotation[0] * DEG, a.rotation[1] * DEG, a.rotation[2] * DEG);
+    if (a.scale)    m.scale.set(a.scale[0], a.scale[1], a.scale[2]);
+    scene.add(m);
+    capsule.registerEditable(m, a.id, a.type || 'prop');
     return m;
   }
   // Recreate editor-added primitives that the game's (possibly older) hook didn't.
@@ -435,6 +450,80 @@ export function initCapsuleEditor(capsule) {
     flash('state "' + name + '" — edits here save as deltas vs Base');
   }
 
+  // ── add asset (file picker) · duplicate · delete ──────
+  // Load a model that's already in the project's assets/ and drop it in front of the camera.
+  async function importModelAtTarget(relPath, fileName) {
+    const base = fileName.replace(/\.(glb|gltf)$/i, '').toLowerCase().replace(/[^a-z0-9._-]/g, '-') || 'model';
+    const id = base + '-' + Math.random().toString(36).slice(2, 6);
+    const front = new THREE.Vector3(); camera.getWorldDirection(front); front.y = 0;
+    if (front.lengthSq() < 1e-6) front.set(0, 0, -1); front.normalize();
+    const tgt = orbit.target.clone().add(front.multiplyScalar(3));
+    const prop = { id, src: './' + relPath, type: 'model', position: [r3(tgt.x), 0, r3(tgt.z)], rotation: [0, 0, 0], scale: [1, 1, 1] };
+    try {
+      const obj = await capsule.addObject(prop);
+      let box = new THREE.Box3().setFromObject(obj); const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const s = maxDim > 3 ? 2.5 / maxDim : (maxDim < 0.3 ? 1 / maxDim : 1);
+      obj.scale.setScalar(s); obj.updateMatrixWorld(true); box = new THREE.Box3().setFromObject(obj);
+      obj.position.y = r3(-box.min.y);
+      prop.scale = [r3(s), r3(s), r3(s)]; prop.position = [r3(obj.position.x), r3(obj.position.y), r3(obj.position.z)];
+      refreshList(); select(obj, true); markDirty(); flash('added ' + fileName);
+    } catch (err) { flash('load failed: ' + err.message); }
+  }
+  // "+ Add ▸ Asset" — opens the OS file picker (same result as dragging a file in).
+  async function addAsset() {
+    if (!window.capsuleHost || !window.capsuleHost.importAsset) { flash('asset import needs the Capsule app'); return; }
+    flash('choose a file…');
+    const r = await window.capsuleHost.importAsset();
+    if (!r || r.canceled) { writeSelected(); return; }
+    if (!r.ok) { flash('import failed: ' + (r.error || '?')); return; }
+    if (/\.(glb|gltf)$/i.test(r.name)) await importModelAtTarget(r.path, r.name);
+    else flash('imported ' + r.name + ' → ' + r.path);   // texture/audio: copied; reference it from code
+  }
+  const baseId = (id) => id.replace(/-[a-z0-9]{4}$/, '');
+  // Build an "added"-style descriptor for any duplicable object: an existing added
+  // asset (GLB/primitive), or a recognised game primitive (Box / Sphere / Cylinder).
+  function describeFor(obj, id) {
+    const sc = ensureScene();
+    const a = (sc.added || []).find((x) => x.id === id);
+    if (a) return { ...a };
+    const t = obj.geometry && obj.geometry.type;
+    const shape = t === 'SphereGeometry' ? 'sphere' : t === 'CylinderGeometry' ? 'cylinder' : t === 'BoxGeometry' ? 'box' : null;
+    if (!shape) return null;
+    const color = (obj.material && obj.material.color) ? '#' + obj.material.color.getHexString() : '#9aa0aa';
+    const x = xform(obj);
+    return { id, geo: { shape }, color, type: obj.userData.capsuleType || 'prop', position: x.position, rotation: x.rotation, scale: x.scale };
+  }
+  const idOfObj = (obj) => (capsule.editable.find((e) => e.obj === obj) || {}).id;
+  async function duplicateObj(obj) {
+    if (!obj) return flash('select an object first');
+    const id0 = idOfObj(obj); if (!id0) return flash('select an object first');
+    const d = describeFor(obj, id0);
+    if (!d) return flash("can't duplicate this one — it isn't a prop or asset");
+    const nid = baseId(id0) + '-' + Math.random().toString(36).slice(2, 6);
+    const p = d.position || [0, 0, 0];
+    const copy = { ...d, id: nid, position: [p[0] + 1, p[1], p[2] + 1] };   // offset so the copy is visible
+    recordAdded(copy);
+    const o = copy.geo ? makePrimitiveFromProp(copy) : await capsule.addObject(copy);
+    refreshList(); select(o, false); markDirty(); flash('duplicated → ' + nid);
+  }
+  function deleteObj(obj) {
+    if (!obj) return flash('select an object first');
+    const id0 = idOfObj(obj); if (!id0) return;
+    const sc = ensureScene();
+    const inAdded = (sc.added || []).some((x) => x.id === id0);
+    gizmo.detach();
+    if (obj.parent) obj.parent.remove(obj);
+    capsule.editable = capsule.editable.filter((e) => e.obj !== obj);
+    if (capsule._added) capsule._added.delete(id0);
+    if (inAdded) { sc.added = sc.added.filter((x) => x.id !== id0); if (sc.base) delete sc.base[id0]; }   // added asset → gone for good
+    else { if (!sc.base) sc.base = {}; sc.base[id0] = { ...(sc.base[id0] || xform(obj)), visible: false }; }  // game entity → hidden persistently
+    if (selected === obj) selected = null;
+    refreshList(); writeSelected(); markDirty(); flash('deleted ' + id0);
+  }
+  const duplicateSelected = () => duplicateObj(selected);
+  const deleteSelected = () => deleteObj(selected);
+
   // ── add popover ───────────────────────────────────────
   addBtn.onclick = (e) => {
     e.stopPropagation();
@@ -447,7 +536,7 @@ export function initCapsuleEditor(capsule) {
     const b = e.target.closest('button'); if (!b) return;
     pop.style.display = 'none';
     const act = b.dataset.act;
-    if (act === 'scene') addSceneFn(); else if (act === 'state') addStateFn(); else addPrimitive(act);
+    if (act === 'scene') addSceneFn(); else if (act === 'state') addStateFn(); else if (act === 'asset') addAsset();
   });
   window.addEventListener('pointerdown', (e) => { if (pop.style.display === 'flex' && !pop.contains(e.target) && e.target !== addBtn) pop.style.display = 'none'; }, true);
 
@@ -465,6 +554,9 @@ export function initCapsuleEditor(capsule) {
   frameBtn.onclick = () => frameAll();
   flyBtn.onclick = () => { flyOn = !flyOn; flyBtn.classList.toggle('on', flyOn); keysHeld.clear();
     flash(flyOn ? 'fly on — W A S D move · Q E down/up' : 'fly off'); };
+  // ✨ AI box toggle — needs the app bridge; hide it in a plain browser.
+  if (window.capsuleHost && window.capsuleHost.toggleAI) aiBtn.onclick = () => window.capsuleHost.toggleAI();
+  else aiBtn.style.display = 'none';
   renderer.domElement.addEventListener('dblclick', (e) => {
     ptr.x = (e.clientX / window.innerWidth) * 2 - 1; ptr.y = -(e.clientY / window.innerHeight) * 2 + 1;
     ray.setFromCamera(ptr, camera);
@@ -505,6 +597,8 @@ export function initCapsuleEditor(capsule) {
     else if (k === 'e') setMode('rotate');
     else if (k === 'r') setMode('scale');
     else if (k === 'f') frameAll();
+    else if (k === 'd') duplicateSelected();
+    else if (k === 'delete' || k === 'backspace') { e.preventDefault(); deleteSelected(); }
     else if (k === 'escape') select(null);
   }, true);
 
@@ -547,28 +641,7 @@ export function initCapsuleEditor(capsule) {
     flash('importing ' + file.name + '…');
     const r = await window.capsuleHost.saveAsset(file.name, await file.arrayBuffer());
     if (!r || !r.ok) { flash('save failed: ' + ((r && r.error) || '?')); return; }
-    const base = file.name.replace(/\.(glb|gltf)$/i, '').toLowerCase().replace(/[^a-z0-9._-]/g, '-') || 'model';
-    const id = base + '-' + Math.random().toString(36).slice(2, 6);
-    const front = new THREE.Vector3(); camera.getWorldDirection(front); front.y = 0;
-    if (front.lengthSq() < 1e-6) front.set(0, 0, -1);
-    front.normalize();
-    const tgt = orbit.target.clone().add(front.multiplyScalar(3));
-    const prop = { id, src: './' + r.path, type: 'model', position: [r3(tgt.x), 0, r3(tgt.z)], rotation: [0, 0, 0], scale: [1, 1, 1] };
-    try {
-      const obj = await capsule.addObject(prop);
-      // sane size + sit on the floor
-      let box = new THREE.Box3().setFromObject(obj);
-      const size = box.getSize(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z) || 1;
-      const s = maxDim > 3 ? 2.5 / maxDim : (maxDim < 0.3 ? 1 / maxDim : 1);
-      obj.scale.setScalar(s); obj.updateMatrixWorld(true);
-      box = new THREE.Box3().setFromObject(obj);
-      obj.position.y = r3(-box.min.y);
-      prop.scale = [r3(s), r3(s), r3(s)];
-      prop.position = [r3(obj.position.x), r3(obj.position.y), r3(obj.position.z)];
-      refreshList(); select(obj, true); markDirty();
-      flash('added ' + file.name + ' → assets/models/');
-    } catch (err) { flash('load failed: ' + err.message); }
+    await importModelAtTarget(r.path, file.name);   // shared with "+ Add ▸ Asset"
   });
 
   setMode('translate');
@@ -577,7 +650,7 @@ export function initCapsuleEditor(capsule) {
   refreshList();             // populate the panel immediately on attach
   writeSelected();
   capsule.editor = { select, frameObject, setMode, save, previewLayer, buildLayer, undo, redo, applyInspector,
-    addPrimitive, addScene: addSceneFn, addState: addStateFn, frameAll,
+    addPrimitive, addScene: addSceneFn, addState: addStateFn, addAsset, duplicate: duplicateSelected, remove: deleteSelected, frameAll,
     byId, list: listEditables, setTransform, selectById: (id) => select(byId(id), true),
     get scene() { return editScene; }, get layer() { return editLayer; },
     get undoDepth() { return undoStack.length; }, get redoDepth() { return redoStack.length; },
@@ -614,8 +687,8 @@ function injectUI() {
     .cap-bar,.cap-panel,.cap-hud,.cap-insp{font-family:var(--cap-font);-webkit-font-smoothing:antialiased;
       color:var(--cap-text);background:var(--cap-raised);border:1px solid var(--cap-border);
       box-shadow:var(--cap-shadow);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3)}
-    .cap-bar{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;gap:3px;
-      align-items:center;padding:6px;border-radius:14px;font-size:12.5px;
+    .cap-bar{position:fixed;top:14px;left:0;right:0;margin:0 auto;width:fit-content;z-index:99999;display:flex;gap:3px;
+      align-items:center;padding:6px;border-radius:14px;font-size:13px;
       flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 28px)}
     .cap-bar button,.cap-bar select{font:inherit;font-weight:600;color:var(--cap-muted);background:transparent;
       border:1px solid transparent;padding:7px 11px;border-radius:8px;cursor:pointer;
@@ -634,9 +707,14 @@ function injectUI() {
       letter-spacing:.18em;background:var(--cap-raised);position:sticky;top:0;border-bottom:1px solid var(--cap-border)}
     .cap-cat{padding:11px 14px 4px;color:var(--cap-brand);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em}
     .cap-cat.cap-warn{color:var(--cap-warn)}
-    .cap-item{padding:7px 14px 7px 16px;color:var(--cap-muted);cursor:pointer;border-radius:7px;margin:1px 6px;
-      transition:background .12s var(--cap-ease),color .12s var(--cap-ease)}
+    .cap-item{padding:6px 10px 6px 16px;color:var(--cap-muted);cursor:pointer;border-radius:7px;margin:1px 6px;
+      display:flex;align-items:center;gap:6px;transition:background .12s var(--cap-ease),color .12s var(--cap-ease)}
     .cap-item:hover{background:var(--cap-hover);color:var(--cap-text)}
+    .cap-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cap-item-acts{display:flex;gap:1px;opacity:0;transition:opacity .12s var(--cap-ease)}
+    .cap-item:hover .cap-item-acts{opacity:1}
+    .cap-item-act{background:transparent;border:0;color:var(--cap-dim);cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;border-radius:5px}
+    .cap-item-act:hover{background:var(--cap-border-strong);color:var(--cap-text)}
     .cap-item.sel{background:var(--cap-brand-soft);color:var(--cap-brand);box-shadow:inset 2px 0 0 var(--cap-brand)}
     .cap-item.cap-untagged{color:var(--cap-warn);opacity:.85}
     .cap-hud{position:fixed;bottom:14px;left:14px;z-index:99999;white-space:pre;color:var(--cap-muted);
@@ -669,6 +747,14 @@ function injectUI() {
     .cap-ask .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
     .cap-ask .row button{font:inherit;font-weight:700;font-size:13px;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid var(--cap-border);background:transparent;color:var(--cap-muted)}
     .cap-ask .row button#cap-ask-ok{background:var(--cap-brand);border-color:var(--cap-brand);color:var(--cap-on-brand)}
+    /* bigger, clearer icon buttons */
+    .cap-bar button.ic{font-size:16px;min-width:36px;padding:7px 8px;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+    .cap-bar #cap-ai{font-size:15px}
+    /* hover tooltip — tells you what each icon does */
+    .cap-bar [data-tip]{position:relative}
+    .cap-bar [data-tip]:hover::after{content:attr(data-tip);position:absolute;top:calc(100% + 9px);left:50%;transform:translateX(-50%);
+      white-space:nowrap;background:var(--cap-raised);border:1px solid var(--cap-border);color:var(--cap-text);font-family:var(--cap-font);
+      font-size:11px;font-weight:600;padding:5px 8px;border-radius:7px;box-shadow:var(--cap-shadow);pointer-events:none;z-index:100002;letter-spacing:.02em}
   `;
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
 
@@ -677,17 +763,17 @@ function injectUI() {
     `<label>scene</label><select id="cap-scene"></select>` +
     `<label>layer</label><select id="cap-layer"></select><div class="sep"></div>` +
     `<button id="cap-t" class="on">Move</button><button id="cap-r">Rotate</button><button id="cap-s">Scale</button>` +
-    `<div class="sep"></div><button id="cap-add" title="Add object / scene / state">＋ Add</button>` +
-    `<button id="cap-frame" title="Frame all (F) / selected">⊡</button><button id="cap-fly" title="Fly — hold W A S D / Q E to move">✥</button>` +
-    `<div class="sep"></div><button id="cap-undo" title="Undo (⌘Z)">↶</button><button id="cap-redo" title="Redo (⌘⇧Z)">↷</button>` +
-    `<div class="sep"></div><button id="cap-home" title="Back to the welcome screen">⌂</button><button id="cap-code" title="Open the project in VS Code">&lt;/&gt;</button>` +
-    `<div class="sep"></div><button id="cap-play" title="Play the game (drop ?edit)">▶ Play</button><button id="cap-save">Save</button>`;
+    `<div class="sep"></div><button id="cap-add">＋ Add</button>` +
+    `<div class="sep"></div><button class="ic" id="cap-frame" data-tip="Frame · F">⛶</button><button class="ic" id="cap-fly" data-tip="Fly · W A S D / Q E">✥</button>` +
+    `<button class="ic" id="cap-undo" data-tip="Undo · ⌘Z">↶</button><button class="ic" id="cap-redo" data-tip="Redo · ⌘⇧Z">↷</button>` +
+    `<div class="sep"></div><button class="ic" id="cap-home" data-tip="Welcome screen">⌂</button><button class="ic" id="cap-code" data-tip="Open in VS Code">&lt;/&gt;</button><button class="ic" id="cap-ai" data-tip="AI box · ⌘J">✨</button>` +
+    `<div class="sep"></div><button id="cap-play" data-tip="Play the game">▶ Play</button><button id="cap-save">Save</button>`;
   document.body.appendChild(bar);
 
   const pop = document.createElement('div'); pop.className = 'cap-pop';
   pop.innerHTML =
-    `<div class="h">Add object</div>` +
-    `<button data-act="box">▦&nbsp;&nbsp;Box</button><button data-act="sphere">●&nbsp;&nbsp;Sphere</button><button data-act="cylinder">▮&nbsp;&nbsp;Pillar</button>` +
+    `<div class="h">Add</div>` +
+    `<button data-act="asset">⬚&nbsp;&nbsp;Asset (.glb / image)…</button>` +
     `<div class="h">Structure</div>` +
     `<button data-act="scene">＋&nbsp;&nbsp;New scene…</button><button data-act="state">＋&nbsp;&nbsp;New state…</button>`;
   document.body.appendChild(pop);
@@ -720,6 +806,7 @@ function injectUI() {
     playBtn: bar.querySelector('#cap-play'), homeBtn: bar.querySelector('#cap-home'),
     codeBtn: bar.querySelector('#cap-code'), addBtn: bar.querySelector('#cap-add'),
     frameBtn: bar.querySelector('#cap-frame'), flyBtn: bar.querySelector('#cap-fly'),
+    aiBtn: bar.querySelector('#cap-ai'),
     pop, ask, inspEl: insp, inspInputs,
     modeBtns: { translate: bar.querySelector('#cap-t'), rotate: bar.querySelector('#cap-r'), scale: bar.querySelector('#cap-s') },
   };

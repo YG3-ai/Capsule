@@ -48,7 +48,7 @@
         <div class="root">in <a id="reveal"></a></div>
       </div>
       <div class="actions">
-        <button class="cap-btn" id="open">Open elsewhere…</button>
+        <button class="cap-btn" id="open">Import…</button>
         <button class="cap-btn cap-btn--primary" id="new">＋ New</button>
       </div>
     </div>
@@ -61,7 +61,7 @@
 
   document.getElementById('back').onclick = () => host.welcome && host.welcome();
   document.getElementById('new').onclick = () => host.newScreen && host.newScreen();
-  document.getElementById('open').onclick = () => host.pickProject && host.pickProject();
+  document.getElementById('open').onclick = () => host.importProject && host.importProject();
   document.getElementById('reveal').onclick = () => host.revealProjects && host.revealProjects();
 
   function card(p) {
