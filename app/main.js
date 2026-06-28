@@ -72,9 +72,10 @@ function startServer(root) {
       catch { res.writeHead(400); return res.end('Bad request'); }
       if (rel === '/' || rel === '') rel = '/index.html';
       // Always serve the canonical editor overlay so EVERY project — even ones
-      // scaffolded before an update — gets the latest editor (buttons, add-prop,
-      // scenes/states) without re-copying files into the capsule.
-      if (rel === '/capsule-edit.js') {
+      // scaffolded before an update, or that import it from a subfolder (e.g.
+      // theConsumed's src/capsule-edit.js) — gets the latest editor (buttons,
+      // add-asset, scenes/states) without re-copying files into the capsule.
+      if (path.basename(rel) === 'capsule-edit.js') {
         return fs.readFile(path.join(__dirname, 'template', 'capsule-edit.js'), (err, data) => {
           if (err) { res.writeHead(404); return res.end('Not found'); }
           res.writeHead(200, { 'Content-Type': 'text/javascript' });

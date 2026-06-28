@@ -39,6 +39,8 @@ any model can open the source and have a working game one second later.
   changes, and the editor workflow. Read this to start a project.
 - **[SCENES.md](SCENES.md)** — the spec for scenes/states, the tag/type/detector conventions,
   and the naming rules.
+- **[demo/](demo/)** — a playable example capsule (the PSX "Dead Mall" scene in the screenshots).
+  Run `python3 -m http.server 8000`, open `http://localhost:8000/demo/`, add `?edit` to drag the cast.
 
 ## What it does (roadmap)
 

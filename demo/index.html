@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dead Mall — a Capsule demo</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #07070b; }
+  canvas { display: block; image-rendering: pixelated; }   /* PSX crunch */
+  #hud { position: fixed; top: 10px; left: 12px; pointer-events: none;
+    font: 600 12px 'Satoshi','Inter',system-ui,sans-serif; letter-spacing: .14em; text-transform: uppercase;
+    color: rgba(255,255,255,.55); }
+  #hud b { color: #D4A04A; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three":         "https://unpkg.com/three@0.171.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.171.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="hud"><b>Dead Mall</b> &nbsp;·&nbsp; loop 03 &nbsp;·&nbsp; 04 survivors</div>
+
+<!-- Thin orchestrator: each system lives in its own src/ module. This file just
+     wires them together. Build the game in the modules, not in here. -->
+<script type="module">
+import { renderer, scene, camera } from './src/scene.js';
+import { initCapsuleHook }         from './src/capsule-hook.js';
+import { addLights }               from './src/lights.js';
+import { buildWorld }              from './src/world.js';
+import { loadCast }                from './src/cast.js';
+import { startLoop }               from './src/loop.js';
+
+const capsule = initCapsuleHook({ scene, camera, renderer });   // editor/AI runtime → window.capsule
+const rig = addLights(scene);
+buildWorld(scene);
+await loadCast(capsule);
+startLoop({ renderer, scene, camera, rig });
+
+// edit mode (?edit) attaches the editor overlay
+if (new URLSearchParams(location.search).has('edit')) {
+  import('./capsule-edit.js').then((m) => {
+    m.initCapsuleEditor(capsule);
+    const sp = new URLSearchParams(location.search);              // ?shot / ?add — handy for screenshots & deep links
+    const id = sp.get('shot'); if (id) setTimeout(() => { const ed = capsule.editor; ed && ed.select(ed.byId(id)); }, 500);
+    const add = sp.get('add'); if (add) setTimeout(() => { const ed = capsule.editor; ed && ed.addPrimitive(add); }, 500);
+  }).catch((e) => console.error(e));
+}
+</script>
+</body>
+</html>

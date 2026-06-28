@@ -1,0 +1,5 @@
+{
+  "scenes": {
+    "main": { "entry": "index.html", "data": "capsule.scenes.json", "states": ["base", "loop1", "loop3"] }
+  }
+}
