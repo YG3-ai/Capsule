@@ -1,6 +1,6 @@
 {
   "name": "capsule-editor-app",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Capsule editor — desktop app: open a project, place objects, save to disk, edit code in VS Code",
   "main": "main.js",
   "scripts": {
@@ -26,13 +26,15 @@
       "welcome.html",
       "newproject.html",
       "browse.html",
+      "mosaic.html",
       "template-2d.html",
       "ui/**/*",
       "template/**/*",
       "package.json"
     ],
     "asarUnpack": [
-      "template/**/*"
+      "template/**/*",
+      "template-2d.html"
     ],
     "directories": {
       "output": "dist"

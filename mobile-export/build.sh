@@ -50,6 +50,7 @@ rsync -a \
   --exclude '.git' --exclude 'node_modules' --exclude '.DS_Store' \
   --exclude 'export' --exclude 'mobile-export' --exclude 'app' --exclude 'editor.html' \
   --exclude 'capsule-edit.js' --exclude 'capsule.scenes.json' \
+  --exclude 'mosaic' --exclude 'mosaic.json' \
   --exclude 'CLAUDE.md' --exclude 'AGENTS.md' --exclude 'GUIDE.md' --exclude 'SCENES.md' \
   --exclude 'TODO.md' --exclude 'RUN_COMMAND.md' --exclude 'othernotes.md' \
   "$CAPSULE"/ "$WWW"/

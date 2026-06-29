@@ -27,7 +27,7 @@
   .sub { color: var(--text-dim); margin: 14px 0 44px; font-size: 17px; max-width: 46ch; line-height: 1.5; }
   .sub b { color: var(--text); font-weight: 600; }
 
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
   .card { text-align: left; display: flex; flex-direction: column; gap: 8px; font-family: var(--font-body); }
   .card .ic { font-size: 20px; line-height: 1; color: var(--brand); }
   .card b { font-family: var(--font); font-weight: 700; color: var(--text); font-size: 17px; }
@@ -70,6 +70,11 @@
         <b>Import existing project</b>
         <span>Copy a capsule from anywhere into your Capsule folder, then open it.</span>
       </button>
+      <button class="cap-card cap-card--interactive card" id="mosaic">
+        <span class="ic">▦</span>
+        <b>Open Mosaic</b>
+        <span>A visual moodboard — drop in concept art &amp; references so the AI can see your direction.</span>
+      </button>
     </div>
     <div id="recents"></div>
   </div>
@@ -79,6 +84,7 @@
   document.getElementById('new').onclick = () => host.newScreen && host.newScreen();
   document.getElementById('browse').onclick = () => host.browse && host.browse();
   document.getElementById('open').onclick = () => host.importProject && host.importProject();
+  document.getElementById('mosaic').onclick = () => host.openMosaic && host.openMosaic();
   if (host.recents) host.recents().then((list) => {
     if (!list || !list.length) return;
     const el = document.getElementById('recents');

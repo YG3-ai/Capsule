@@ -52,6 +52,7 @@ mkdir -p "$STAGE"
 rsync -a \
   --exclude '.git' --exclude 'node_modules' --exclude '.DS_Store' \
   --exclude 'export' --exclude 'editor.html' \
+  --exclude 'mosaic' --exclude 'mosaic.json' \
   --exclude 'CLAUDE.md' --exclude 'AGENTS.md' --exclude 'README.md' \
   "$CAPSULE"/ "$STAGE"/
 

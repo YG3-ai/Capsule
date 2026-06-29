@@ -31,4 +31,5 @@ contextBridge.exposeInMainWorld('capsuleHost', {
   // assets + AI box
   importAsset: () => ipcRenderer.invoke('capsule:importAsset'),   // { ok, path, name } or { canceled }
   toggleAI: () => ipcRenderer.invoke('capsule:toggleAI'),
+  openMosaic: () => ipcRenderer.invoke('mosaic:open'),            // visual moodboard window
 });

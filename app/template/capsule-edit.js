@@ -113,7 +113,7 @@ export function initCapsuleEditor(capsule) {
   // ── UI ────────────────────────────────────────────────
   const ui = injectUI();
   const { hud, list, saveBtn, modeBtns, sceneSel, layerSel, undoBtn, redoBtn, playBtn, homeBtn, codeBtn,
-          addBtn, frameBtn, flyBtn, aiBtn, meshBtn, matEl, colInput, texName, texRepBtn, texDelBtn,
+          mosaicBtn, addBtn, frameBtn, flyBtn, aiBtn, meshBtn, matEl, colInput, texName, texRepBtn, texDelBtn,
           pop, ask, inspEl, inspInputs } = ui;
   // The editor has its own HUD — hide the game's top-left HUD so they don't overlap.
   const gameHud = document.getElementById('hud'); if (gameHud) gameHud.style.display = 'none';
@@ -125,6 +125,7 @@ export function initCapsuleEditor(capsule) {
   const host = window.capsuleHost;
   if (host && host.welcome) homeBtn.onclick = () => host.welcome(); else homeBtn.style.display = 'none';
   if (host && host.openInVSCode) codeBtn.onclick = () => host.openInVSCode(); else codeBtn.style.display = 'none';
+  if (host && host.openMosaic) mosaicBtn.onclick = () => host.openMosaic(); else if (mosaicBtn) mosaicBtn.style.display = 'none';
 
   // ── edit ANY mesh (walls, floors, structure) + materials/textures ──────
   // Untagged structural meshes aren't in capsule.editable, so we persist their
@@ -772,20 +773,12 @@ export function initCapsuleEditor(capsule) {
     return true;
   }
 
-  // ── GLB drag-drop import ──────────────────────────────
-  const dropHint = document.createElement('div');
-  dropHint.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;justify-content:center;' +
-    'pointer-events:none;background:rgba(212,160,74,.10);border:3px dashed #D4A04A;color:#D4A04A;' +
-    "font:600 18px 'Satoshi','Inter',system-ui,sans-serif;letter-spacing:.04em";
-  dropHint.textContent = 'drop a .glb / .gltf to add it';
-  document.body.appendChild(dropHint);
-  addEventListener('dragover', (e) => { e.preventDefault(); dropHint.style.display = 'flex'; });
-  addEventListener('dragleave', (e) => { if (e.target === document.documentElement) dropHint.style.display = 'none'; });
+  // ── GLB drag-drop import (silent — no overlay hint; just drop a .glb to add it) ──
+  addEventListener('dragover', (e) => { e.preventDefault(); });   // allow the drop, show nothing
   addEventListener('drop', async (e) => {
     e.preventDefault();
-    dropHint.style.display = 'none';
     const file = [...((e.dataTransfer && e.dataTransfer.files) || [])].find((f) => /\.(glb|gltf)$/i.test(f.name));
-    if (!file) { flash('drop a .glb or .gltf file'); return; }
+    if (!file) return;   // not a model — ignore quietly
     if (!window.capsuleHost || !window.capsuleHost.saveAsset) { flash('asset import needs the Capsule app'); return; }
     flash('importing ' + file.name + '…');
     const r = await window.capsuleHost.saveAsset(file.name, await file.arrayBuffer());
@@ -924,7 +917,7 @@ function injectUI() {
     `<div class="sep"></div><button class="ic" id="cap-mesh" data-tip="Edit any mesh — walls, floors, structure">▦</button>` +
     `<button class="ic" id="cap-frame" data-tip="Frame · F">⛶</button><button class="ic" id="cap-fly" data-tip="Fly · W A S D / Q E">✥</button>` +
     `<button class="ic" id="cap-undo" data-tip="Undo · ⌘Z">↶</button><button class="ic" id="cap-redo" data-tip="Redo · ⌘⇧Z">↷</button>` +
-    `<div class="sep"></div><button class="ic" id="cap-home" data-tip="Welcome screen">⌂</button><button class="ic" id="cap-code" data-tip="Open in VS Code">&lt;/&gt;</button><button class="ic" id="cap-ai" data-tip="AI box · ⌘J">✨</button>` +
+    `<div class="sep"></div><button class="ic" id="cap-home" data-tip="Welcome screen">⌂</button><button class="ic" id="cap-mosaic" data-tip="Mosaic · moodboard">❏</button><button class="ic" id="cap-code" data-tip="Open in VS Code">&lt;/&gt;</button><button class="ic" id="cap-ai" data-tip="AI box · ⌘J">✨</button>` +
     `<div class="sep"></div><button id="cap-play" data-tip="Play the game">▶ Play</button><button id="cap-save">Save</button>`;
   document.body.appendChild(bar);
 
@@ -968,6 +961,7 @@ function injectUI() {
     undoBtn: bar.querySelector('#cap-undo'), redoBtn: bar.querySelector('#cap-redo'),
     playBtn: bar.querySelector('#cap-play'), homeBtn: bar.querySelector('#cap-home'),
     codeBtn: bar.querySelector('#cap-code'), addBtn: bar.querySelector('#cap-add'),
+    mosaicBtn: bar.querySelector('#cap-mosaic'),
     frameBtn: bar.querySelector('#cap-frame'), flyBtn: bar.querySelector('#cap-fly'),
     aiBtn: bar.querySelector('#cap-ai'), meshBtn: bar.querySelector('#cap-mesh'),
     matEl: insp.querySelector('#cap-mat'), colInput: insp.querySelector('#cap-col'),

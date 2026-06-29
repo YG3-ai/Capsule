@@ -41,16 +41,26 @@ any model can open the source and have a working game one second later.
   and the naming rules.
 - **[demo/](demo/)** — a playable example capsule (the PSX "Dead Mall" scene in the screenshots).
   Run `python3 -m http.server 8000`, open `http://localhost:8000/demo/`, add `?edit` to drag the cast.
+- **[CHANGELOG.md](CHANGELOG.md)** — what's new in each update.
 
-## What it does (roadmap)
+## What it does
 
 - **Viewport placement** — select, move, rotate, and scale objects; changes save back to plain
-  source or a readable data file.
+  source or a readable data file. Duplicate any prop, edit walls/floors in mesh mode, and swap
+  textures or colors right in the viewport.
+- **Encapsulated assets** — add things with `capsule.add(obj, { collide, light, sound, behavior })`
+  so an asset carries its own collision, light, sound, and per-frame logic — and they move with it
+  when you drag it. (See the template `CLAUDE.md`.)
+- **Mosaic — a visual moodboard** 🆕 — drag concept art, screenshots, and storyboards onto a
+  per-project board, then hit **Reference in chat** to point the AI at them. Models design far
+  better from images than from text alone. Open it with **⌘⇧M** or the `❏` button.
 - **Drag-and-drop assets** — drop a `.glb`, texture, or audio file straight into the project.
 - **Native export** ✅ — wrap a game into an executable for **macOS, Windows, and Linux** via
   Electron: `./export/build.sh [dir|mac|win|linux|all]`.
 - **Bring your own AI** — point a local model, an API key, or Codex / Claude Code / aider at the
   folder. The files are already readable; there's nothing to integrate.
+
+See **[CHANGELOG.md](CHANGELOG.md)** for what's new.
 
 ## Run a game locally
 
@@ -72,6 +82,7 @@ python3 -m http.server 8000
 ```
 index.html    # entry point — HTML, CSS, and the game's JS
 assets/       # models (.glb), textures (.png/.hdr), audio (.mp3) — drop them in
+mosaic/       # your visual moodboard (dev-only; excluded from export)
 CLAUDE.md     # AI context for Claude Code
 AGENTS.md     # same content, for other agents
 ```

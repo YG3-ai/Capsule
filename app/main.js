@@ -17,6 +17,7 @@ let aiView = null;       // the AI box, docked inside the editor window (a WebCo
 let aiVisible = false;
 let projectDir = null;
 let server = null;
+let mosaicWin = null;    // the Mosaic moodboard window (its own BrowserWindow, per project)
 
 // ── config (which AI agent CLI to run) ────────────────────
 const cfgPath = () => path.join(app.getPath('userData'), 'capsule-config.json');
@@ -141,21 +142,52 @@ function showBrowse() {
 function newProject() { showNewProject(); }
 
 // Scaffold a fresh capsule from the bundled template into the projects home, then open it.
-async function createProject({ name, kind = '3d', platform = 'pc' } = {}) {
+// `open: false` scaffolds without switching the editor — used by the design-first flow
+// where you spin up an empty game from Mosaic and keep working on the moodboard.
+// In the packaged app __dirname lives inside app.asar (a single file), so copying
+// app.asar/template with cpSync/copyFileSync throws ENOTDIR ("not a directory").
+// These templates are asarUnpack'd to app.asar.unpacked/, so resolve bundled files to
+// that real on-disk location. No-op in dev (the path has no app.asar segment).
+const bundled = (rel) => path.join(__dirname, rel).replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+
+async function createProject({ name, kind = '3d', platform = 'pc', open = true } = {}) {
   const safe = String(name || '').trim().replace(/[^a-zA-Z0-9 ._-]/g, '').replace(/\s+/g, '-') || 'untitled-game';
   const dir = path.join(ensureProjectsRoot(), safe);
-  if (fs.existsSync(dir)) return { ok: false, error: `"${safe}" already exists in your Capsule folder` };
+  if (fs.existsSync(dir)) {
+    // A real game already lives here → don't clobber it. But an empty/partial folder left
+    // by a previously failed create (no index.html) is safe to replace.
+    if (fs.existsSync(path.join(dir, 'index.html')))
+      return { ok: false, error: `"${safe}" already exists in your Capsule folder` };
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  }
   try {
     fs.mkdirSync(dir, { recursive: true });
-    fs.cpSync(path.join(__dirname, 'template'), dir, { recursive: true });
-    if (kind === '2d') fs.copyFileSync(path.join(__dirname, 'template-2d.html'), path.join(dir, 'index.html'));
+    fs.cpSync(bundled('template'), dir, { recursive: true });
+    if (kind === '2d') fs.copyFileSync(bundled('template-2d.html'), path.join(dir, 'index.html'));
     // record kind + platform in the manifest so the editor and viewport know
     let m = {}; try { m = JSON.parse(fs.readFileSync(path.join(dir, 'capsule.json'), 'utf8')); } catch {}
     m.meta = { kind, platform };
     fs.writeFileSync(path.join(dir, 'capsule.json'), JSON.stringify(m, null, 2) + '\n');
-    await openProject(dir);
+    scaffoldMosaic(dir);   // every project starts with its own (empty) moodboard
+    // Register it either way so it lands in Recent + Browse + the Mosaic chooser. Opening
+    // a project already records it; a design-first (open:false) create records it directly.
+    if (open) await openProject(dir); else pushRecent(dir);
     return { ok: true, path: dir };
-  } catch (e) { return { ok: false, error: String(e.message || e) }; }
+  } catch (e) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}   // never leave a half-made folder
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
+// Give a project its own empty moodboard: a `mosaic/` folder with one default board.
+// Per-project — never shared. No-op if a mosaic.json already exists.
+function scaffoldMosaic(dir) {
+  try {
+    const id = 'mood-mosaic';
+    fs.mkdirSync(path.join(dir, 'mosaic', id), { recursive: true });
+    const file = path.join(dir, 'mosaic.json');
+    if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify({ boards: [{ id, name: 'Mood Mosaic', items: [] }] }, null, 2));
+  } catch {}
 }
 
 async function openProject(dir, { launchCode = true } = {}) {
@@ -402,6 +434,98 @@ ipcMain.handle('capsule:importAsset', async () => {
   } catch (e) { return { ok: false, error: e.message }; }
 });
 
+// ── Mosaic — the visual moodboard ─────────────────────────────────────────────
+// A per-project Milanote-style board for collecting visual direction (concept art,
+// screenshots, storyboards). Everything is plain files: images land in `mosaic/<board>/`
+// and the layout is a readable `mosaic.json` — so Claude can read the references the
+// same way it reads the rest of the project. Opens in its own window.
+const mosaicSlug = (s) => (String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'board');
+
+function openMosaic(dir) {
+  // Mosaic is strictly per-project. From the editor that's the open project; an explicit
+  // `dir` targets that one. From the welcome screen (no project open) we pass NO dir, and
+  // Mosaic shows its own project chooser ("open one of yours" / "new empty game") rather
+  // than silently reusing the last project.
+  const base = dir || projectDir || null;
+  const query = base ? { query: { dir: base } } : {};
+  if (mosaicWin && !mosaicWin.isDestroyed()) { mosaicWin.loadFile('mosaic.html', query); mosaicWin.focus(); return; }
+  mosaicWin = new BrowserWindow({
+    width: 1240, height: 820, backgroundColor: '#0A0A0E', title: 'Mosaic',
+    webPreferences: { nodeIntegration: true, contextIsolation: false },
+  });
+  mosaicWin.loadFile('mosaic.html', query);
+  mosaicWin.on('closed', () => { mosaicWin = null; });
+}
+
+// Copy a source image into a board folder, de-duplicating the filename on clash.
+// Returns a project-relative `src` (mosaic/<board>/<file>) + the final name.
+function mosaicCopyInto(base, boardId, srcPath) {
+  const destDir = path.join(base, 'mosaic', boardId);
+  fs.mkdirSync(destDir, { recursive: true });
+  let name = path.basename(srcPath);
+  if (fs.existsSync(path.join(destDir, name))) {
+    const ext = path.extname(name), stem = name.slice(0, -ext.length || undefined);
+    name = `${stem}-${Date.now().toString(36).slice(-4)}${ext}`;
+  }
+  fs.copyFileSync(srcPath, path.join(destDir, name));
+  return { src: `mosaic/${boardId}/${name}`, name };
+}
+
+ipcMain.handle('mosaic:open', () => openMosaic());
+ipcMain.handle('mosaic:openExternal', (e, url) => { if (url) shell.openExternal(url); });
+// Project chooser (shown when Mosaic opens with no project) + design-first creation.
+ipcMain.handle('mosaic:projects', () => ({ root: ensureProjectsRoot(), projects: listProjects() }));
+ipcMain.handle('mosaic:createProject', (e, opts) => createProject({ ...(opts || {}), open: false }));
+ipcMain.handle('mosaic:load', (e, dir) => {
+  const base = dir || projectDir; if (!base) return { boards: [] };
+  try { return JSON.parse(fs.readFileSync(path.join(base, 'mosaic.json'), 'utf8')); }
+  catch { return { boards: [] }; }
+});
+ipcMain.handle('mosaic:save', (e, { dir, data }) => {
+  const base = dir || projectDir; if (!base) return { ok: false };
+  try { fs.mkdirSync(path.join(base, 'mosaic'), { recursive: true });
+    fs.writeFileSync(path.join(base, 'mosaic.json'), JSON.stringify(data, null, 2)); return { ok: true }; }
+  catch (err) { return { ok: false, error: err.message }; }
+});
+ipcMain.handle('mosaic:newBoard', (e, { dir, name }) => {
+  const base = dir || projectDir;
+  const data = (() => { try { return JSON.parse(fs.readFileSync(path.join(base, 'mosaic.json'), 'utf8')); } catch { return { boards: [] }; } })();
+  let id = mosaicSlug(name), n = 1;
+  while ((data.boards || []).some((b) => b.id === id)) id = mosaicSlug(name) + '-' + (++n);
+  fs.mkdirSync(path.join(base, 'mosaic', id), { recursive: true });
+  return { id };
+});
+ipcMain.handle('mosaic:importImages', async (e, { dir, boardId }) => {
+  const base = dir || projectDir; if (!base) return { canceled: true };
+  const r = await dialog.showOpenDialog(mosaicWin || win, {
+    title: 'Add images', properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }],
+  });
+  if (r.canceled || !r.filePaths.length) return { canceled: true };
+  return { files: r.filePaths.map((fp) => mosaicCopyInto(base, boardId, fp)) };
+});
+ipcMain.handle('mosaic:addDroppedFile', (e, { dir, boardId, filePath }) => {
+  const base = dir || projectDir; if (!base || !filePath) return null;
+  try { return mosaicCopyInto(base, boardId, filePath); } catch { return null; }
+});
+// Point the docked AI box at a board: dock + focus the editor's chat and TYPE a
+// reference prompt into the live agent (no newline — the user finishes the sentence).
+ipcMain.handle('mosaic:referenceInAI', async (e, { dir, boardId, files }) => {
+  const base = dir || projectDir;
+  if (!base || !win) return { ok: false };
+  // If this board's game isn't the one open in the editor (e.g. a design-first board),
+  // open it so it has a live AI box — bridging "designed it" → "now build it".
+  const wasOpen = projectDir === base;
+  if (!wasOpen) await openProject(base);
+  ensureAI(); showAI();
+  const list = (files && files.length) ? ' (' + files.slice(0, 12).join(', ') + (files.length > 12 ? ', …' : '') + ')' : '';
+  const text = `Take a look at the reference images in ./mosaic/${boardId}/${list} and `;
+  const send = () => { if (aiView) aiView.webContents.send('capsule:inject', text); win.focus(); };
+  // A freshly-opened project needs a moment for the AI box's pty + agent to come up.
+  wasOpen ? send() : setTimeout(send, 1500);
+  return { ok: true };
+});
+
 // Resize the window to a target device size so you can design for it — the game
 // fills the window via its own resize handler. (PC vs Mobile "mode" preview.)
 function setViewport(w, h) {
@@ -422,6 +546,7 @@ function buildMenu() {
       { type: 'separator' },
       { label: 'AI Box (toggle)', accelerator: 'CmdOrCtrl+J', click: () => toggleAI() },
       { label: 'Set AI Agent…', click: () => chooseAgent() },
+      { label: 'Open Mosaic (moodboard)', accelerator: 'CmdOrCtrl+Shift+M', click: () => openMosaic() },
       { label: 'Open in VS Code', accelerator: 'CmdOrCtrl+Shift+C', click: () => openInVSCode() },
       { type: 'separator' },
       { label: 'Export', submenu: [
@@ -468,6 +593,7 @@ function createWindow() {
         return b;
       };
       bar.appendChild(mk('✎ Edit', () => { const u = new URL(location.href); u.searchParams.set('edit',''); location.href = u.toString(); }, true));
+      bar.appendChild(mk('▦ Mosaic', () => host.openMosaic && host.openMosaic()));
       bar.appendChild(mk('</> Code', () => host.openInVSCode && host.openInVSCode()));
       bar.appendChild(mk('⌂ Welcome', () => host.welcome && host.welcome()));
       document.body.appendChild(bar);

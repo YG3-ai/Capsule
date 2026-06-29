@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mosaic</title>
+<link rel="stylesheet" href="ui/tokens.css" />
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { display: flex; font-family: var(--font-body); color: var(--text); background: var(--bg); }
+
+  /* ── Sidebar: boards ───────────────────────────────── */
+  #side { width: 216px; flex: 0 0 216px; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; background: rgba(255,255,255,0.012); }
+  #side .head { padding: 16px 16px 10px; display: flex; align-items: center; gap: 9px; }
+  #side .mark { width: 16px; height: 16px; border-radius: 5px;
+    background: linear-gradient(135deg, var(--brand-hover), #E0973F 55%, #C8643D); }
+  #side .name { font-family: var(--font); font-weight: 700; font-size: 13px;
+    letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-dim); }
+  #boards { flex: 1; overflow-y: auto; padding: 6px 8px; }
+  .board { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: var(--r-md);
+    cursor: pointer; color: var(--text-muted); font-size: 13.5px; font-weight: 500;
+    border: 1px solid transparent; }
+  .board:hover { background: var(--surface-hover); color: var(--text); }
+  .board.active { background: var(--brand-soft); border-color: var(--brand-border); color: var(--text); }
+  .board .ic { color: var(--brand); font-size: 13px; }
+  .board .ct { margin-left: auto; font-size: 11px; color: var(--text-faint); }
+  #side .foot { padding: 10px; border-top: 1px solid var(--border); }
+
+  /* ── Top bar ───────────────────────────────────────── */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #bar { height: 52px; flex: 0 0 52px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; padding: 0 14px; }
+  #bar .title { font-family: var(--font); font-weight: 700; font-size: 15px; letter-spacing: var(--track-tight); }
+  #bar .spacer { flex: 1; }
+  #bar .hint { font-size: 12px; color: var(--text-faint); margin-right: 4px; }
+  .cap-btn.sm { padding: 7px 11px; font-size: 13px; }
+
+  /* ── Canvas ────────────────────────────────────────── */
+  #viewport { flex: 1; position: relative; overflow: hidden; cursor: grab;
+    background-image: radial-gradient(rgba(255,255,255,0.045) 1px, transparent 1px);
+    background-size: 26px 26px; }
+  #viewport.panning { cursor: grabbing; }
+  #viewport.drop { box-shadow: inset 0 0 0 2px var(--brand-border); }
+  #canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+
+  .item { position: absolute; border-radius: var(--r-lg); user-select: none;
+    box-shadow: var(--shadow-md); border: 1px solid var(--border); overflow: visible; }
+  .item.sel { border-color: var(--brand); box-shadow: var(--shadow-pop), 0 0 0 1px var(--brand); }
+  .item .body { width: 100%; height: 100%; border-radius: inherit; overflow: hidden; }
+  .item img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  .item .cap { position: absolute; left: 0; right: 0; bottom: -19px; font-size: 11px;
+    color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .item.note .body { background: #15140f; border: 1px solid var(--brand-border); }
+  .item.note textarea { width: 100%; height: 100%; resize: none; border: 0; outline: 0; padding: 12px;
+    background: transparent; color: #f0e4cf; font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
+  .item.note .body::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--brand); border-radius: 3px 0 0 3px; }
+
+  .item.link .body { background: var(--surface-raised); padding: 12px 14px; cursor: pointer; }
+  .item.link .lt { font-family: var(--font); font-weight: 700; font-size: 14px; color: var(--text); margin-bottom: 4px; }
+  .item.link .lu { font-size: 12px; color: var(--info); word-break: break-all; }
+
+  .item .del { position: absolute; top: -10px; right: -10px; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--surface-raised); border: 1px solid var(--border-strong); color: var(--text-muted);
+    font-size: 13px; line-height: 20px; text-align: center; cursor: pointer; display: none; }
+  .item:hover .del, .item.sel .del { display: block; }
+  .item .del:hover { color: var(--danger); border-color: var(--danger); }
+  .item .rz { position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; border-radius: 4px;
+    background: var(--brand); border: 2px solid var(--bg); cursor: nwse-resize; display: none; }
+  .item.sel .rz { display: block; }
+
+  #zoom { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 2px;
+    background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--r-md); padding: 3px; }
+  #zoom button { width: 28px; height: 26px; border: 0; background: transparent; color: var(--text-muted);
+    font-size: 15px; cursor: pointer; border-radius: var(--r-sm); }
+  #zoom button:hover { background: var(--surface-hover); color: var(--text); }
+  #zoom .lvl { font-size: 11px; color: var(--text-dim); min-width: 38px; text-align: center; }
+
+  #empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 6px; color: var(--text-faint); pointer-events: none; }
+  #empty b { font-family: var(--font); color: var(--text-dim); font-size: 16px; }
+
+  /* ── Project header (which project's board this is) ─── */
+  #projbar { padding: 0 14px 10px; display: flex; align-items: center; gap: 8px; }
+  #projbar .pn { font-size: 12px; color: var(--text-muted); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #projbar .sw { margin-left: auto; font-size: 11px; color: var(--text-dim); cursor: pointer;
+    border: 1px solid var(--border); border-radius: var(--r-sm); padding: 3px 7px; white-space: nowrap; }
+  #projbar .sw:hover { color: var(--text); border-color: var(--border-strong); }
+
+  /* ── Project chooser (shown when no project is open) ── */
+  #chooser { position: fixed; inset: 0; background: var(--bg); display: none; flex-direction: column;
+    align-items: center; justify-content: center; padding: 40px; z-index: 50; }
+  #chooser.show { display: flex; }
+  #chooser .mark { width: 26px; height: 26px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--brand-hover), #E0973F 55%, #C8643D); margin-bottom: 16px; }
+  #chooser h1 { font-family: var(--font); font-weight: 900; font-size: 30px; letter-spacing: var(--track-tight); margin: 0 0 6px; }
+  #chooser .sub { color: var(--text-dim); font-size: 14px; margin: 0 0 26px; text-align: center; max-width: 46ch; line-height: 1.5; }
+  #chooser .panel { width: 480px; max-width: 100%; }
+  #chooser .plist { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; margin-bottom: 14px; }
+  #chooser .prow { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--border);
+    border-radius: var(--r-lg); cursor: pointer; background: var(--surface); }
+  #chooser .prow:hover { background: var(--surface-hover); border-color: var(--brand-border); }
+  #chooser .prow .nm { font-weight: 600; font-size: 14px; }
+  #chooser .prow .meta { margin-left: auto; font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em; }
+  #chooser .empty { color: var(--text-faint); font-size: 13px; padding: 14px; text-align: center; }
+
+  /* ── New-game dialog (kind + platform, like the welcome New Project screen) ── */
+  .ng-label { font-family: var(--font); font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: var(--track-label); color: var(--text-dim); margin: 0 0 8px; }
+  .ng-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .ng-opt { text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--surface); color: var(--text-muted); cursor: pointer; font-family: var(--font);
+    font-weight: 600; font-size: 13.5px; display: flex; flex-direction: column; gap: 2px; }
+  .ng-opt small { font-family: var(--font-body); font-weight: 400; font-size: 11px; color: var(--text-faint); }
+  .ng-opt:hover { border-color: var(--border-strong); color: var(--text); }
+  .ng-opt.on { border-color: var(--brand-border); background: var(--brand-soft); color: var(--text); }
+</style>
+</head>
+<body>
+  <div id="side">
+    <div class="head"><div class="mark"></div><div class="name">Mosaic</div></div>
+    <div id="projbar"><span class="pn" id="projName">—</span><span class="sw" id="switchProj">⌂ Projects</span></div>
+    <div id="boards"></div>
+    <div class="foot"><button class="cap-btn sm" id="newBoard" style="width:100%;justify-content:center">＋ New board</button></div>
+  </div>
+
+  <div id="main">
+    <div id="bar">
+      <div class="title" id="boardName">—</div>
+      <div class="spacer"></div>
+      <span class="hint">drop images anywhere</span>
+      <button class="cap-btn sm" id="addImg">＋ Image</button>
+      <button class="cap-btn sm" id="addNote">＋ Note</button>
+      <button class="cap-btn sm" id="addLink">＋ Link</button>
+      <button class="cap-btn sm cap-btn--primary" id="refAI">✦ Reference in chat</button>
+    </div>
+    <div id="viewport">
+      <div id="canvas"></div>
+      <div id="empty"><b>Empty board</b><span>Drop in concept art, screenshots, storyboards — anything the AI should see.</span></div>
+      <div id="zoom">
+        <button id="zOut">－</button><span class="lvl" id="zLvl">100%</span><button id="zIn">＋</button><button id="zFit" title="Reset">⊡</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="chooser">
+    <div class="mark"></div>
+    <h1>Design first</h1>
+    <div class="sub">Collect your visual direction in a Mosaic, then build the game when you're ready. Open one of your projects' boards — or start an empty game and design before a single line of code.</div>
+    <div class="panel">
+      <div class="plist" id="plist"></div>
+      <button class="cap-btn cap-btn--primary" id="newProj" style="width:100%;justify-content:center">＋ New empty game</button>
+    </div>
+  </div>
+
+<script>
+  const { ipcRenderer } = require('electron');
+  const DIR = new URLSearchParams(location.search).get('dir') || '';
+
+  // ── State ────────────────────────────────────────────
+  let data = { boards: [] };
+  let activeId = null;
+  let pan = { x: 80, y: 80 }, zoom = 1;
+  let selected = null;
+  let saveT = null;
+
+  const $ = (s) => document.querySelector(s);
+  const boardsEl = $('#boards'), canvas = $('#canvas'), viewport = $('#viewport');
+  const uid = () => Math.random().toString(36).slice(2, 9);
+  const activeBoard = () => data.boards.find((b) => b.id === activeId);
+  const fileURL = (src) => 'file://' + DIR + '/' + src;
+
+  function scheduleSave() { clearTimeout(saveT); saveT = setTimeout(save, 500); }
+  async function save() { await ipcRenderer.invoke('mosaic:save', { dir: DIR, data }); }
+
+  // ── Boards ───────────────────────────────────────────
+  function renderBoards() {
+    boardsEl.innerHTML = '';
+    for (const b of data.boards) {
+      const el = document.createElement('div');
+      el.className = 'board' + (b.id === activeId ? ' active' : '');
+      el.innerHTML = '<span class="ic">▦</span><span class="nm"></span><span class="ct">' + (b.items ? b.items.length : 0) + '</span>';
+      el.querySelector('.nm').textContent = b.name;
+      el.onclick = () => selectBoard(b.id);
+      boardsEl.appendChild(el);
+    }
+  }
+  function selectBoard(id) { activeId = id; selected = null; $('#boardName').textContent = (activeBoard() || {}).name || '—'; renderBoards(); renderItems(); }
+
+  // ── Items ────────────────────────────────────────────
+  function renderItems() {
+    canvas.innerHTML = '';
+    const b = activeBoard();
+    $('#empty').style.display = (b && b.items && b.items.length) ? 'none' : 'flex';
+    if (!b) return;
+    for (const it of (b.items || [])) canvas.appendChild(makeItem(it));
+    applyView();
+  }
+
+  function makeItem(it) {
+    const el = document.createElement('div');
+    el.className = 'item ' + it.type;
+    el.style.left = it.x + 'px'; el.style.top = it.y + 'px';
+    el.style.width = (it.w || 220) + 'px'; el.style.height = (it.h || 160) + 'px';
+    el.dataset.id = it.id;
+
+    const body = document.createElement('div'); body.className = 'body'; el.appendChild(body);
+    if (it.type === 'image') {
+      const img = document.createElement('img'); img.src = fileURL(it.src); img.draggable = false; body.appendChild(img);
+      const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = it.name || ''; el.appendChild(cap);
+    } else if (it.type === 'note') {
+      const ta = document.createElement('textarea'); ta.value = it.text || ''; ta.placeholder = 'Note…';
+      ta.oninput = () => { it.text = ta.value; scheduleSave(); };
+      ta.onpointerdown = (e) => e.stopPropagation();   // let the textarea take the click
+      body.appendChild(ta);
+    } else if (it.type === 'link') {
+      body.innerHTML = '<div class="lt"></div><div class="lu"></div>';
+      body.querySelector('.lt').textContent = it.title || it.url;
+      body.querySelector('.lu').textContent = it.url;
+      body.onclick = (e) => { e.stopPropagation(); ipcRenderer.invoke('mosaic:openExternal', it.url); };
+    }
+
+    const del = document.createElement('div'); del.className = 'del'; del.textContent = '×';
+    del.onpointerdown = (e) => { e.stopPropagation(); removeItem(it.id); };
+    el.appendChild(del);
+    const rz = document.createElement('div'); rz.className = 'rz'; el.appendChild(rz);
+
+    el.onpointerdown = (e) => startDragItem(e, it, el);
+    rz.onpointerdown = (e) => { e.stopPropagation(); startResize(e, it, el); };
+    return el;
+  }
+
+  function selectItem(id) {
+    selected = id;
+    for (const el of canvas.children) el.classList.toggle('sel', el.dataset.id === id);
+  }
+  function removeItem(id) {
+    const b = activeBoard(); b.items = b.items.filter((x) => x.id !== id);
+    if (selected === id) selected = null;
+    renderItems(); renderBoards(); scheduleSave();
+  }
+
+  // ── Drag / resize items ──────────────────────────────
+  function startDragItem(e, it, el) {
+    if (e.button !== 0) return;
+    e.stopPropagation(); selectItem(it.id);
+    const sx = e.clientX, sy = e.clientY, ox = it.x, oy = it.y;
+    const move = (ev) => { it.x = ox + (ev.clientX - sx) / zoom; it.y = oy + (ev.clientY - sy) / zoom;
+      el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); scheduleSave(); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+  function startResize(e, it, el) {
+    const sx = e.clientX, sy = e.clientY, ow = it.w || 220, oh = it.h || 160;
+    const move = (ev) => { it.w = Math.max(60, ow + (ev.clientX - sx) / zoom); it.h = Math.max(48, oh + (ev.clientY - sy) / zoom);
+      el.style.width = it.w + 'px'; el.style.height = it.h + 'px'; };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); scheduleSave(); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+
+  // ── Pan / zoom ───────────────────────────────────────
+  function applyView() { canvas.style.transform = 'translate(' + pan.x + 'px,' + pan.y + 'px) scale(' + zoom + ')'; $('#zLvl').textContent = Math.round(zoom * 100) + '%'; }
+  viewport.onpointerdown = (e) => {
+    if (e.target !== viewport && e.target !== canvas) return;
+    selected = null; for (const el of canvas.children) el.classList.remove('sel');
+    const sx = e.clientX, sy = e.clientY, ox = pan.x, oy = pan.y; viewport.classList.add('panning');
+    const move = (ev) => { pan.x = ox + (ev.clientX - sx); pan.y = oy + (ev.clientY - sy); applyView(); };
+    const up = () => { viewport.classList.remove('panning'); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  viewport.onwheel = (e) => {
+    e.preventDefault();
+    const r = viewport.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+    const f = Math.exp(-e.deltaY * 0.0015), nz = Math.min(3, Math.max(0.25, zoom * f));
+    pan.x = mx - (mx - pan.x) * (nz / zoom); pan.y = my - (my - pan.y) * (nz / zoom); zoom = nz; applyView();
+  };
+  const zoomBy = (f) => { zoom = Math.min(3, Math.max(0.25, zoom * f)); applyView(); };
+  $('#zIn').onclick = () => zoomBy(1.2); $('#zOut').onclick = () => zoomBy(1 / 1.2);
+  $('#zFit').onclick = () => { zoom = 1; pan = { x: 80, y: 80 }; applyView(); };
+
+  // place a new item near the centre of the current view, in canvas coords
+  function centerPoint() {
+    const r = viewport.getBoundingClientRect();
+    return { x: (r.width / 2 - pan.x) / zoom, y: (r.height / 2 - pan.y) / zoom };
+  }
+  function addItem(it) { const b = activeBoard(); (b.items = b.items || []).push(it); renderItems(); renderBoards(); selectItem(it.id); scheduleSave(); }
+
+  // ── Toolbar actions ──────────────────────────────────
+  $('#addNote').onclick = () => { const c = centerPoint(); addItem({ id: uid(), type: 'note', text: '', x: c.x - 100, y: c.y - 70, w: 200, h: 140 }); };
+  $('#addLink').onclick = async () => {
+    const url = await prompt('Paste a reference URL'); if (!url) return;
+    const c = centerPoint(); addItem({ id: uid(), type: 'link', url, title: '', x: c.x - 120, y: c.y - 30, w: 240, h: 70 });
+  };
+  $('#addImg').onclick = async () => {
+    const r = await ipcRenderer.invoke('mosaic:importImages', { dir: DIR, boardId: activeId });
+    if (!r || r.canceled || !r.files) return;
+    const c = centerPoint();
+    r.files.forEach((f, i) => addItem({ id: uid(), type: 'image', src: f.src, name: f.name, x: c.x - 130 + i * 24, y: c.y - 170 + i * 24, w: 260, h: 340 }));
+  };
+  $('#refAI').onclick = async () => {
+    const b = activeBoard(); if (!b) return;
+    const files = (b.items || []).filter((x) => x.type === 'image').map((x) => x.name);
+    await ipcRenderer.invoke('mosaic:referenceInAI', { dir: DIR, boardId: b.id, name: b.name, files });
+    flash('✦ sent to chat — finish your sentence in the AI box');
+  };
+  $('#newBoard').onclick = async () => {
+    const name = await prompt('Name this board', 'New board'); if (!name) return;
+    const r = await ipcRenderer.invoke('mosaic:newBoard', { dir: DIR, name });
+    data.boards.push({ id: r.id, name, items: [] }); selectBoard(r.id); scheduleSave();
+  };
+
+  // ── Drop OS files onto the canvas ────────────────────
+  viewport.addEventListener('dragover', (e) => { e.preventDefault(); viewport.classList.add('drop'); });
+  viewport.addEventListener('dragleave', (e) => { if (e.target === viewport) viewport.classList.remove('drop'); });
+  viewport.addEventListener('drop', async (e) => {
+    e.preventDefault(); viewport.classList.remove('drop');
+    if (!activeBoard()) return;
+    const r = viewport.getBoundingClientRect();
+    let dx = (e.clientX - r.left - pan.x) / zoom, dy = (e.clientY - r.top - pan.y) / zoom;
+    for (const f of e.dataTransfer.files) {
+      if (!/^image\//.test(f.type) && !/\.(png|jpe?g|gif|webp|svg)$/i.test(f.name)) continue;
+      const res = await ipcRenderer.invoke('mosaic:addDroppedFile', { dir: DIR, boardId: activeId, filePath: f.path });
+      if (res && res.src) { addItem({ id: uid(), type: 'image', src: res.src, name: res.name, x: dx - 130, y: dy - 170, w: 260, h: 340 }); dx += 22; dy += 22; }
+    }
+  });
+
+  // delete key removes the selected item
+  window.addEventListener('keydown', (e) => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selected && document.activeElement.tagName !== 'TEXTAREA') { e.preventDefault(); removeItem(selected); }
+  });
+
+  // tiny toast
+  let toastT = null;
+  function flash(msg) {
+    let t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--surface-raised);border:1px solid var(--brand-border);color:var(--text);padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:var(--shadow-pop);z-index:99'; document.body.appendChild(t); }
+    t.textContent = msg; t.style.opacity = '1'; clearTimeout(toastT); toastT = setTimeout(() => { t.style.opacity = '0'; }, 2600);
+  }
+  // simple in-app prompt (native prompt() is unavailable in Electron renderers)
+  function prompt(label, def = '') {
+    return new Promise((res) => {
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:var(--overlay);display:flex;align-items:center;justify-content:center;z-index:100';
+      ov.innerHTML = '<div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:14px;padding:20px;width:380px;box-shadow:var(--shadow-pop)">'
+        + '<div style="font-family:var(--font);font-weight:600;margin-bottom:12px">' + label + '</div>'
+        + '<input class="cap-input" style="width:100%" /><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">'
+        + '<button class="cap-btn sm" data-x>Cancel</button><button class="cap-btn sm cap-btn--primary" data-ok>OK</button></div></div>';
+      document.body.appendChild(ov);
+      const inp = ov.querySelector('input'); inp.value = def; inp.focus(); inp.select();
+      const done = (v) => { ov.remove(); res(v); };
+      ov.querySelector('[data-ok]').onclick = () => done(inp.value.trim());
+      ov.querySelector('[data-x]').onclick = () => done(null);
+      inp.onkeydown = (e) => { if (e.key === 'Enter') done(inp.value.trim()); if (e.key === 'Escape') done(null); };
+    });
+  }
+
+  // New-game dialog — name + 2D/3D + PC/Mobile, mirroring the welcome New Project screen.
+  // Resolves to { name, kind, platform } or null.
+  function newGameDialog() {
+    return new Promise((res) => {
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:var(--overlay);display:flex;align-items:center;justify-content:center;z-index:100';
+      ov.innerHTML =
+        '<div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:14px;padding:22px;width:440px;box-shadow:var(--shadow-pop)">'
+        + '<div style="font-family:var(--font);font-weight:700;font-size:18px">New game</div>'
+        + '<div style="color:var(--text-dim);font-size:13px;margin:4px 0 16px">An empty game to build later — design the moodboard first.</div>'
+        + '<input class="cap-input" id="ng-name" placeholder="Name" style="width:100%;margin-bottom:16px" />'
+        + '<div class="ng-label">Type</div><div class="ng-seg" id="ng-kind">'
+        + '<button class="ng-opt on" data-v="3d">3D<small>perspective, lit scene</small></button>'
+        + '<button class="ng-opt" data-v="2d">2D<small>orthographic, sprites</small></button></div>'
+        + '<div class="ng-label">Target</div><div class="ng-seg" id="ng-platform">'
+        + '<button class="ng-opt on" data-v="pc">PC / Desktop<small>wide screen</small></button>'
+        + '<button class="ng-opt" data-v="mobile">Mobile<small>390 × 844</small></button></div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">'
+        + '<button class="cap-btn sm" data-x>Cancel</button><button class="cap-btn sm cap-btn--primary" data-ok>Create</button></div></div>';
+      document.body.appendChild(ov);
+      const inp = ov.querySelector('#ng-name'); inp.focus();
+      ov.querySelectorAll('.ng-seg').forEach((seg) => seg.addEventListener('click', (e) => {
+        const b = e.target.closest('.ng-opt'); if (!b) return;
+        seg.querySelectorAll('.ng-opt').forEach((o) => o.classList.toggle('on', o === b));
+      }));
+      const pick = (id) => ov.querySelector('#' + id + ' .ng-opt.on').dataset.v;
+      const done = (v) => { ov.remove(); res(v); };
+      const submit = () => { const name = inp.value.trim(); if (!name) { inp.focus(); return; } done({ name, kind: pick('ng-kind'), platform: pick('ng-platform') }); };
+      ov.querySelector('[data-ok]').onclick = submit;
+      ov.querySelector('[data-x]').onclick = () => done(null);
+      inp.onkeydown = (e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') done(null); };
+    });
+  }
+
+  // ── Project chooser (no project open) ────────────────
+  // Mosaic is per-project, so with no project we don't guess — we let you pick one of
+  // your boards or start an empty game and design first. Switching projects just reloads
+  // this window with a new ?dir.
+  const goProject = (dir) => { location.search = '?dir=' + encodeURIComponent(dir); };
+  $('#switchProj').onclick = () => { location.search = ''; };   // back to the chooser
+  async function renderChooser() {
+    document.getElementById('chooser').classList.add('show');
+    const r = await ipcRenderer.invoke('mosaic:projects');
+    const list = (r && r.projects) || [];
+    const el = $('#plist'); el.innerHTML = '';
+    if (!list.length) el.innerHTML = '<div class="empty">No projects yet — start an empty game below.</div>';
+    for (const p of list) {
+      const row = document.createElement('div'); row.className = 'prow';
+      row.innerHTML = '<span class="ic" style="color:var(--brand)">▦</span><span class="nm"></span><span class="meta">' + (p.kind || '') + '</span>';
+      row.querySelector('.nm').textContent = p.name;
+      row.onclick = () => goProject(p.path);
+      el.appendChild(row);
+    }
+    $('#newProj').onclick = async () => {
+      const g = await newGameDialog(); if (!g) return;
+      const res = await ipcRenderer.invoke('mosaic:createProject', g);   // { name, kind, platform }
+      if (res && res.ok) goProject(res.path); else flash((res && res.error) || 'could not create project');
+    };
+  }
+
+  // ── Boot ─────────────────────────────────────────────
+  (async () => {
+    if (!DIR) { renderChooser(); return; }
+    $('#projName').textContent = decodeURIComponent(DIR).split('/').filter(Boolean).pop();
+    data = await ipcRenderer.invoke('mosaic:load', DIR) || { boards: [] };
+    if (!data.boards || !data.boards.length) {
+      const r = await ipcRenderer.invoke('mosaic:newBoard', { dir: DIR, name: 'Mood Mosaic' });
+      data.boards = [{ id: r.id, name: 'Mood Mosaic', items: [] }]; save();
+    }
+    activeId = data.boards[0].id;
+    renderBoards(); selectBoard(activeId);
+  })();
+</script>
+</body>
+</html>
