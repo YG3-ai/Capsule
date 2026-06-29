@@ -78,7 +78,7 @@ export function initCapsuleEditor(capsule) {
     if (e.value) dragBefore = selected ? snap(selected) : null;
     else if (dragBefore && selected) { pushUndo(selected, dragBefore, snap(selected)); dragBefore = null; }
   });
-  gizmo.addEventListener('objectChange', () => { writeSelected(); markDirty(); });
+  gizmo.addEventListener('objectChange', () => { writeSelected(); markDirty(); if (isLoose(selected)) upsertMeshEdit(selected, xform(selected)); });
   const gizmoHelper = gizmo.getHelper ? gizmo.getHelper() : gizmo;
   scene.add(gizmoHelper);
 
@@ -113,7 +113,8 @@ export function initCapsuleEditor(capsule) {
   // ── UI ────────────────────────────────────────────────
   const ui = injectUI();
   const { hud, list, saveBtn, modeBtns, sceneSel, layerSel, undoBtn, redoBtn, playBtn, homeBtn, codeBtn,
-          addBtn, frameBtn, flyBtn, aiBtn, pop, ask, inspEl, inspInputs } = ui;
+          addBtn, frameBtn, flyBtn, aiBtn, meshBtn, matEl, colInput, texName, texRepBtn, texDelBtn,
+          pop, ask, inspEl, inspInputs } = ui;
   // The editor has its own HUD — hide the game's top-left HUD so they don't overlap.
   const gameHud = document.getElementById('hud'); if (gameHud) gameHud.style.display = 'none';
   undoBtn.onclick = undo;
@@ -125,10 +126,90 @@ export function initCapsuleEditor(capsule) {
   if (host && host.welcome) homeBtn.onclick = () => host.welcome(); else homeBtn.style.display = 'none';
   if (host && host.openInVSCode) codeBtn.onclick = () => host.openInVSCode(); else codeBtn.style.display = 'none';
 
+  // ── edit ANY mesh (walls, floors, structure) + materials/textures ──────
+  // Untagged structural meshes aren't in capsule.editable, so we persist their
+  // edits by a stable signature (name + geometry + original position) under
+  // capsule.data.scenes[scene].meshEdits, and re-apply by matching on load.
+  let pickAll = false;
+  const _texLoader = new THREE.TextureLoader();
+  const isMeshObj = (o) => !!(o && o.isMesh);
+  const isLoose = (o) => !!o && !isTracked(o);   // any untracked object (mesh OR untagged asset group)
+  // Baked/merged/loop-rebuilt structure (e.g. theConsumed's cbox/cAdd world) can't be
+  // individually edited persistently — don't present it as movable.
+  const isStructural = (o) => {
+    for (let p = o; p; p = p.parent) { const u = p.userData; if (u && (u.corridorBuilt || u.mergeable || u.merged)) return true; }
+    return false;
+  };
+  function allMeshes() {
+    const out = [];
+    scene.traverse((o) => {
+      if (!o.isMesh || isStructural(o)) return;
+      for (let p = o; p; p = p.parent) if (p === gizmoHelper) return;   // skip the gizmo's own meshes
+      out.push(o);
+    });
+    return out;
+  }
+  // meshes + groups (the things mesh-edits can target), excluding the gizmo + baked structure
+  function allTargets() {
+    const out = [];
+    scene.traverse((o) => {
+      if (!(o.isMesh || o.isGroup || o.type === 'Group' || o.type === 'Object3D') || isStructural(o)) return;
+      for (let p = o; p; p = p.parent) if (p === gizmoHelper) return;
+      out.push(o);
+    });
+    return out;
+  }
+  function meshSig(m) {
+    const op = m.userData.__origPos || [r3(m.position.x), r3(m.position.y), r3(m.position.z)];
+    return { name: m.name || '', geo: (m.geometry && m.geometry.type) || '', pos: op };
+  }
+  const sigKey = (s) => `${s.name}|${s.geo}|${s.pos.join(',')}`;
+  const nearPos = (p, a) => Math.abs(p.x - a[0]) < 0.06 && Math.abs(p.y - a[1]) < 0.06 && Math.abs(p.z - a[2]) < 0.06;
+  function ensureMeshEdits() { const sc = ensureScene(); if (!sc.meshEdits) sc.meshEdits = []; return sc.meshEdits; }
+  function upsertMeshEdit(mesh, patch) {
+    if (!isMeshObj(mesh)) return;
+    if (!mesh.userData.__origPos) mesh.userData.__origPos = [r3(mesh.position.x), r3(mesh.position.y), r3(mesh.position.z)];
+    const sig = meshSig(mesh); const list = ensureMeshEdits();
+    let e = list.find((x) => sigKey(x.sig) === sigKey(sig));
+    if (!e) { e = { sig }; list.push(e); }
+    Object.assign(e, patch);
+    markDirty();
+  }
+  function applyMap(m, mapPath) {
+    if (!m.material) return;
+    if (!mapPath) { m.material.map = null; }
+    else { const t = _texLoader.load(mapPath); t.colorSpace = THREE.SRGBColorSpace; m.material.map = t; }
+    m.material.needsUpdate = true;
+  }
+  function reapplyMeshEdits() {
+    const sc = capsule.data.scenes && capsule.data.scenes[editScene];
+    if (!sc || !sc.meshEdits) return;
+    const meshes = allTargets();
+    for (const e of sc.meshEdits) {
+      const m = meshes.find((x) => !x.userData.__meDone && (x.name || '') === e.sig.name
+        && ((x.geometry && x.geometry.type) || '') === e.sig.geo && nearPos(x.position, e.sig.pos));
+      if (!m) continue;
+      m.userData.__meDone = true; m.userData.__origPos = e.sig.pos;
+      if (e.position) m.position.set(e.position[0], e.position[1], e.position[2]);
+      if (e.rotation) m.rotation.set(e.rotation[0] * DEG, e.rotation[1] * DEG, e.rotation[2] * DEG);
+      if (e.scale) m.scale.set(e.scale[0], e.scale[1], e.scale[2]);
+      if (e.color && m.material && m.material.color) m.material.color.set(e.color);
+      if ('map' in e) applyMap(m, e.map);
+    }
+  }
+  function refreshMaterial() {
+    const m = selected, show = isMeshObj(m) && m.material;
+    matEl.style.display = show ? 'block' : 'none';
+    if (!show) return;
+    if (m.material.color) colInput.value = '#' + m.material.color.getHexString();
+    texName.textContent = m.material.map ? 'texture set' : '— none —';
+  }
+
   // ── numeric inspector (type exact transforms) ─────────
   function refreshInspector() {
-    const on = selected && isTracked(selected);
+    const on = selected && (isTracked(selected) || isMeshObj(selected));
     inspEl.style.display = on ? 'block' : 'none';
+    refreshMaterial();
     if (!on) return;
     const t = xform(selected);
     inspInputs.px.value = t.position[0]; inspInputs.py.value = t.position[1]; inspInputs.pz.value = t.position[2];
@@ -136,7 +217,7 @@ export function initCapsuleEditor(capsule) {
     inspInputs.sx.value = t.scale[0];    inspInputs.sy.value = t.scale[1];    inspInputs.sz.value = t.scale[2];
   }
   function applyInspector() {
-    if (!selected || !isTracked(selected)) return;
+    if (!selected || !(isTracked(selected) || isMeshObj(selected))) return;
     const num = (k, fallback) => { const v = parseFloat(inspInputs[k].value); return Number.isFinite(v) ? v : fallback; };
     const before = snap(selected);
     selected.position.set(num('px', selected.position.x), num('py', selected.position.y), num('pz', selected.position.z));
@@ -144,8 +225,32 @@ export function initCapsuleEditor(capsule) {
     selected.scale.set(num('sx', selected.scale.x), num('sy', selected.scale.y), num('sz', selected.scale.z));
     pushUndo(selected, before, snap(selected));
     markDirty(); writeSelected();
+    if (isLoose(selected)) upsertMeshEdit(selected, xform(selected));
   }
   for (const k in inspInputs) inspInputs[k].addEventListener('change', applyInspector);
+
+  // material controls (color + texture replace / remove) for the selected mesh
+  function wireMaterial() {
+    colInput.oninput = () => {
+      if (!isMeshObj(selected) || !selected.material.color) return;
+      selected.material.color.set(colInput.value); upsertMeshEdit(selected, { color: colInput.value });
+    };
+    texRepBtn.onclick = async () => {
+      if (!isMeshObj(selected)) return;
+      if (!(window.capsuleHost && window.capsuleHost.importAsset)) return flash('texture import needs the Capsule app');
+      const r = await window.capsuleHost.importAsset();
+      if (!r || r.canceled) return;
+      if (!r.ok) return flash('import failed: ' + (r.error || '?'));
+      applyMap(selected, './' + r.path); upsertMeshEdit(selected, { map: './' + r.path });
+      refreshMaterial(); flash('texture → ' + r.name);
+    };
+    texDelBtn.onclick = () => {
+      if (!isMeshObj(selected)) return;
+      applyMap(selected, null); upsertMeshEdit(selected, { map: null });
+      refreshMaterial(); flash('texture removed');
+    };
+  }
+  wireMaterial();
 
   function layersFor(sceneName) {
     const code = (capsule.scenes[sceneName] && capsule.scenes[sceneName].states) || [];
@@ -221,16 +326,30 @@ export function initCapsuleEditor(capsule) {
     ptr.x = (e.clientX / window.innerWidth) * 2 - 1;
     ptr.y = -(e.clientY / window.innerHeight) * 2 + 1;
     ray.setFromCamera(ptr, camera);
+    if (pickAll) {   // mesh mode — pick any mesh (walls, floors, structure)
+      const hit = ray.intersectObjects(allMeshes(), true)[0];
+      return select(hit ? hit.object : null);
+    }
     const objs = capsule.editable.map((e) => e.obj);
     const hit = ray.intersectObjects(objs, true)[0];
     let o = hit ? hit.object : null;
     while (o && !objs.includes(o)) o = o.parent;
-    select(o || null);
+    if (o) return select(o, false);
+    // fall back: click an untagged asset (the ⚠ list items) right in the viewport
+    const untag = findUntagged();
+    if (untag.length) {
+      const uhit = ray.intersectObjects(untag, true)[0];
+      if (uhit) { let u = uhit.object; while (u && !untag.includes(u)) u = u.parent; if (u) return select(u, false); }
+    }
+    select(null);
   });
 
   function select(obj, frame = false) {
     selected = obj;
-    if (obj) { gizmo.attach(obj); if (frame) frameObject(obj); } else gizmo.detach();
+    if (obj) {
+      if (isLoose(obj) && !obj.userData.__origPos) obj.userData.__origPos = [r3(obj.position.x), r3(obj.position.y), r3(obj.position.z)];
+      gizmo.attach(obj); if (frame) frameObject(obj);
+    } else gizmo.detach();
     refreshList();
     writeSelected();
   }
@@ -241,8 +360,9 @@ export function initCapsuleEditor(capsule) {
     const tag = `scene: ${editScene}   layer: ${editLayer}`;
     if (!selected) { hud.textContent = `${tag}\n${capsule.editable.length} editable · click one`; return; }
     if (!isTracked(selected)) {
-      hud.textContent = `⚠ UNTAGGED · ${selected.name || '(unnamed)'}\n` +
-        `not editable yet — tag it at its spawn site:\n${suggestTag(selected)}`;
+      const what = isMeshObj(selected) ? 'mesh' : 'untagged';
+      hud.textContent = `${tag}\n${what} · ${selected.name || (selected.geometry && selected.geometry.type) || 'object'}  ·  ` +
+        `drag to move (saved by position)\ntag it for a stable id + grouping:  ${suggestTag(selected)}`;
       return;
     }
     hud.textContent = `${tag}\n${idOf(selected)}  ·  ${(capsule.editable.find((e) => e.obj === selected) || {}).type || 'object'}`;
@@ -555,6 +675,9 @@ export function initCapsuleEditor(capsule) {
   frameBtn.onclick = () => frameAll();
   flyBtn.onclick = () => { flyOn = !flyOn; flyBtn.classList.toggle('on', flyOn); keysHeld.clear();
     flash(flyOn ? 'fly on — W A S D move · Q E down/up' : 'fly off'); };
+  meshBtn.onclick = () => { pickAll = !pickAll; meshBtn.classList.toggle('on', pickAll);
+    if (!pickAll && isLoose(selected)) select(null);
+    flash(pickAll ? 'mesh mode — click any wall / floor / mesh to edit + retexture' : 'mesh mode off'); };
   // ✨ AI box toggle — needs the app bridge; hide it in a plain browser.
   if (window.capsuleHost && window.capsuleHost.toggleAI) aiBtn.onclick = () => window.capsuleHost.toggleAI();
   else aiBtn.style.display = 'none';
@@ -648,6 +771,8 @@ export function initCapsuleEditor(capsule) {
   setMode('translate');
   populateScenePickers();
   ensureAddedPrimitives();   // recreate editor-added primitives the game hook didn't
+  reapplyMeshEdits();        // re-apply saved wall/floor/material edits
+  setTimeout(reapplyMeshEdits, 800);   // ...again for meshes the game builds async
   refreshList();             // populate the panel immediately on attach
   writeSelected();
   capsule.editor = { select, frameObject, setMode, save, previewLayer, buildLayer, undo, redo, applyInspector,
@@ -728,6 +853,12 @@ function injectUI() {
       transition:border-color .12s var(--cap-ease),box-shadow .12s var(--cap-ease)}
     .cap-insp input:hover{border-color:var(--cap-border-strong)}
     .cap-insp input:focus{outline:none;border-color:var(--cap-brand-border);box-shadow:0 0 0 3px var(--cap-brand-soft)}
+    .cap-insp .cap-mat{display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--cap-border)}
+    .cap-insp .cap-colin{width:36px;height:22px;padding:0;border:1px solid var(--cap-border);border-radius:5px;background:none;cursor:pointer}
+    .cap-insp .cap-texname{flex:1;color:var(--cap-dim);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .cap-insp .cap-texbtn{font:inherit;font-weight:600;font-size:10.5px;color:var(--cap-muted);background:var(--cap-surface);
+      border:1px solid var(--cap-border);border-radius:5px;padding:3px 7px;cursor:pointer}
+    .cap-insp .cap-texbtn:hover{border-color:var(--cap-border-strong);color:var(--cap-text)}
     .cap-panel::-webkit-scrollbar{width:8px}
     .cap-panel::-webkit-scrollbar-thumb{background:var(--cap-border-strong);border-radius:8px}
     .cap-bar button.on{background:var(--cap-brand-soft);color:var(--cap-brand);border-color:var(--cap-brand-border)}
@@ -765,7 +896,8 @@ function injectUI() {
     `<label>layer</label><select id="cap-layer"></select><div class="sep"></div>` +
     `<button id="cap-t" class="on">Move</button><button id="cap-r">Rotate</button><button id="cap-s">Scale</button>` +
     `<div class="sep"></div><button id="cap-add">＋ Add</button>` +
-    `<div class="sep"></div><button class="ic" id="cap-frame" data-tip="Frame · F">⛶</button><button class="ic" id="cap-fly" data-tip="Fly · W A S D / Q E">✥</button>` +
+    `<div class="sep"></div><button class="ic" id="cap-mesh" data-tip="Edit any mesh — walls, floors, structure">▦</button>` +
+    `<button class="ic" id="cap-frame" data-tip="Frame · F">⛶</button><button class="ic" id="cap-fly" data-tip="Fly · W A S D / Q E">✥</button>` +
     `<button class="ic" id="cap-undo" data-tip="Undo · ⌘Z">↶</button><button class="ic" id="cap-redo" data-tip="Redo · ⌘⇧Z">↷</button>` +
     `<div class="sep"></div><button class="ic" id="cap-home" data-tip="Welcome screen">⌂</button><button class="ic" id="cap-code" data-tip="Open in VS Code">&lt;/&gt;</button><button class="ic" id="cap-ai" data-tip="AI box · ⌘J">✨</button>` +
     `<div class="sep"></div><button id="cap-play" data-tip="Play the game">▶ Play</button><button id="cap-save">Save</button>`;
@@ -795,7 +927,12 @@ function injectUI() {
   insp.innerHTML =
     `<div class="row"><b>P</b><input id="px"><input id="py"><input id="pz"></div>` +
     `<div class="row"><b>R°</b><input id="rx"><input id="ry"><input id="rz"></div>` +
-    `<div class="row"><b>S</b><input id="sx"><input id="sy"><input id="sz"></div>`;
+    `<div class="row"><b>S</b><input id="sx"><input id="sy"><input id="sz"></div>` +
+    `<div class="cap-mat" id="cap-mat">` +
+      `<div class="row"><b>COL</b><input type="color" id="cap-col" class="cap-colin"></div>` +
+      `<div class="row"><b>TEX</b><span id="cap-texname" class="cap-texname">—</span>` +
+        `<button id="cap-tex-rep" class="cap-texbtn">Replace</button><button id="cap-tex-del" class="cap-texbtn" title="Remove texture">✕</button></div>` +
+    `</div>`;
   document.body.appendChild(insp);
   const inspInputs = {};
   for (const k of ['px','py','pz','rx','ry','rz','sx','sy','sz']) inspInputs[k] = insp.querySelector('#' + k);
@@ -807,7 +944,10 @@ function injectUI() {
     playBtn: bar.querySelector('#cap-play'), homeBtn: bar.querySelector('#cap-home'),
     codeBtn: bar.querySelector('#cap-code'), addBtn: bar.querySelector('#cap-add'),
     frameBtn: bar.querySelector('#cap-frame'), flyBtn: bar.querySelector('#cap-fly'),
-    aiBtn: bar.querySelector('#cap-ai'),
+    aiBtn: bar.querySelector('#cap-ai'), meshBtn: bar.querySelector('#cap-mesh'),
+    matEl: insp.querySelector('#cap-mat'), colInput: insp.querySelector('#cap-col'),
+    texName: insp.querySelector('#cap-texname'), texRepBtn: insp.querySelector('#cap-tex-rep'),
+    texDelBtn: insp.querySelector('#cap-tex-del'),
     pop, ask, inspEl: insp, inspInputs,
     modeBtns: { translate: bar.querySelector('#cap-t'), rotate: bar.querySelector('#cap-r'), scale: bar.querySelector('#cap-s') },
   };

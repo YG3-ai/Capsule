@@ -86,6 +86,7 @@ window.capsule = {
     this.activeScene = name;
     this.scene.traverse(o => { const s = o.userData && o.userData.capsuleScene; if (s !== undefined) o.visible = (s === name); });
     this.editable = [];
+    this._behaviors.length = 0; this._bounds.length = 0;   // per-scene; re-added as the scene's assets do
     this._loadAdded();
     this.scan();
   },
@@ -118,7 +119,53 @@ window.capsule = {
         this.registerEditable(obj, a.id, a.type || 'model');
       }).catch(e => console.warn('[capsule] added object failed:', a.id, e.message)); }
   },
+
+  // capsule.add(obj, { type, id, ...attributes }) — the standard way to drop an
+  // asset in. It parents the object, tags it editable, and wires its attributes via
+  // components (built-ins light / sound / collide / behavior; add your own with
+  // capsule.component(name, fn)). Each handler gets (obj, spec).
+  components: {}, _behaviors: [], _bounds: [], _listener: null,
+  component(name, fn) { this.components[name] = fn; return this; },
+  add(obj, opts = {}) {
+    this.scene.add(obj);
+    const type = opts.type || 'prop';
+    const r = (n) => Math.round(n * 100) / 100;
+    const id = opts.id || `${type}@${r(obj.position.x)},${r(obj.position.y)},${r(obj.position.z)}`;
+    obj.userData.capsuleAttrs = opts;
+    this.registerEditable(obj, id, type);
+    for (const k in opts) { if (k === 'type' || k === 'id') continue; const h = this.components[k]; if (h) h(obj, opts[k]); }
+    return obj;
+  },
+  tick(dt) { for (const b of this._behaviors) b(dt); },     // call once per frame from your loop
+  blocked(x, z) {                                            // built-in following-collision query
+    for (const b of this._bounds) { const o = b.obj; if (!o.parent || o.visible === false) continue;
+      const cx = o.position.x + b.offX, cz = o.position.z + b.offZ;
+      if (Math.abs(x - cx) < b.w && Math.abs(z - cz) < b.d) return true; }
+    return false;
+  },
 };
+
+// ── built-in attribute components — extend with capsule.component(name, fn) ──
+window.capsule
+  .component('light', (obj, s = {}) => {                     // child light → follows the asset
+    const l = new THREE.PointLight(s.color ?? 0xffffff, s.intensity ?? 1, s.distance ?? 0, s.decay ?? 2);
+    if (s.position) l.position.set(s.position[0], s.position[1], s.position[2]);
+    obj.add(l); obj.userData.capsuleLight = l;
+  })
+  .component('sound', (obj, s = {}) => {                     // spatial PositionalAudio child → follows
+    const cap = window.capsule;
+    if (!cap._listener) { cap._listener = new THREE.AudioListener(); cap.camera.add(cap._listener); }
+    const a = new THREE.PositionalAudio(cap._listener);
+    a.setRefDistance(s.radius ?? 5); a.setLoop(s.loop ?? true); a.setVolume(s.volume ?? 1);
+    new THREE.AudioLoader().load(s.src, (buf) => { a.setBuffer(buf); if (s.autoplay ?? true) a.play(); }, undefined, () => {});
+    obj.add(a); obj.userData.capsuleSound = a;
+  })
+  .component('collide', (obj, s = {}) => {                   // following AABB → query capsule.blocked(x,z)
+    window.capsule._bounds.push({ obj, w: s.w ?? 0.5, d: s.d ?? 0.5, offX: s.offX ?? 0, offZ: s.offZ ?? 0 });
+  })
+  .component('behavior', (obj, fn) => {                      // per-frame fn(asset, dt) via capsule.tick(dt)
+    window.capsule._behaviors.push((dt) => fn(obj, dt));
+  });
 fetch('./capsule.scenes.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
   .then(d => { if (d) window.capsule.data = d; window.capsule.scan(); window.capsule._loadAdded(); }).catch(() => {});
 setInterval(() => window.capsule.scan(), 1500);
@@ -129,10 +176,16 @@ function quad(w, h, color) {
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color }));
 }
 // A starter player — editable. Tell the AI to replace it with your game.
+// capsule.add() is the standard way to drop in an asset: it tags the object editable
+// and wires any attributes you pass (collide / sound / behavior / light). Examples:
+//   window.capsule.add(player, { type: 'entity', id: 'player',
+//     collide: { w: 0.5, d: 0.5 },                 // → query capsule.blocked(x, z)
+//     sound:   { src: './assets/audio/hum.mp3', radius: 4 },
+//     behavior: (o, dt) => { o.rotation.z += dt; }, // → per-frame, via capsule.tick(dt)
+//   });
 const player = quad(1, 1, 0x4fd6c2);
 player.position.set(0, 0, 0);
-scene.add(player);
-window.capsule.registerEditable(player, 'player', 'entity');
+window.capsule.add(player, { type: 'entity', id: 'player' });
 
 // a couple of pickups to drag around
 for (const [x, y, i] of [[-3, 1.5, 0], [3, -1, 1]]) {
@@ -144,7 +197,7 @@ for (const [x, y, i] of [[-3, 1.5, 0], [3, -1, 1]]) {
 
 // === RENDER LOOP ===
 const clock = new THREE.Clock();
-renderer.setAnimationLoop(() => { clock.getDelta(); renderer.render(scene, camera); });
+renderer.setAnimationLoop(() => { const dt = clock.getDelta(); window.capsule.tick(dt); renderer.render(scene, camera); });
 
 // === RESIZE (keep the orthographic frustum matched to the window) ===
 addEventListener('resize', () => {

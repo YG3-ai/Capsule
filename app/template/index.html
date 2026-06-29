@@ -95,6 +95,7 @@ window.capsule = {
     // scenes are independent — show only the objects that belong to this one
     this.scene.traverse(o => { const s = o.userData && o.userData.capsuleScene; if (s !== undefined) o.visible = (s === name); });
     this.editable = [];
+    this._behaviors.length = 0; this._bounds.length = 0;   // per-scene; re-added as the scene's assets do
     this._loadAdded();   // bring in this scene's own added objects
     this.scan();
   },
@@ -130,9 +131,74 @@ window.capsule = {
         obj.userData.capsuleAdded = true; _apply(obj, a); this.scene.add(obj); this.registerEditable(obj, a.id, a.type || 'model');
       }).catch(e => console.warn('[capsule] added object failed:', a.id, e.message)); }
   },
+  // Re-apply editor edits to untagged structural meshes (walls, floors): match by
+  // signature (name + geometry + original position), then apply transform + material.
+  _applyMeshEdits() {
+    const sc = this.data.scenes?.[this.activeScene]; if (!sc?.meshEdits) return;
+    const tl = this._tex || (this._tex = new THREE.TextureLoader());
+    const meshes = []; this.scene.traverse(o => { if (o.isMesh || o.isGroup || o.type === 'Group' || o.type === 'Object3D') meshes.push(o); });
+    for (const e of sc.meshEdits) {
+      const m = meshes.find(x => !x.userData.__meDone && (x.name || '') === e.sig.name
+        && ((x.geometry && x.geometry.type) || '') === e.sig.geo
+        && Math.abs(x.position.x - e.sig.pos[0]) < 0.06 && Math.abs(x.position.y - e.sig.pos[1]) < 0.06 && Math.abs(x.position.z - e.sig.pos[2]) < 0.06);
+      if (!m) continue; m.userData.__meDone = true;
+      if (e.position) m.position.set(e.position[0], e.position[1], e.position[2]);
+      if (e.rotation) m.rotation.set(e.rotation[0] * DEG, e.rotation[1] * DEG, e.rotation[2] * DEG);
+      if (e.scale) m.scale.set(e.scale[0], e.scale[1], e.scale[2]);
+      if (e.color && m.material && m.material.color) m.material.color.set(e.color);
+      if ('map' in e && m.material) { if (!e.map) m.material.map = null; else { const t = tl.load(e.map); t.colorSpace = THREE.SRGBColorSpace; m.material.map = t; } m.material.needsUpdate = true; }
+    }
+  },
+
+  // ── assets + attributes (capsule.add) ─────────────────────────────────────
+  // The one clean way to add a game asset: place it, tag it (editable + grouped),
+  // and wire its attributes so they MOVE WITH IT. Attributes are handled by
+  // components — built-ins (light / sound / collide / behavior) are registered
+  // below; add your own with capsule.component(name, fn). Each handler gets (obj, spec).
+  components: {}, _behaviors: [], _bounds: [], _listener: null,
+  component(name, fn) { this.components[name] = fn; return this; },
+  add(obj, opts = {}) {
+    this.scene.add(obj);
+    const type = opts.type || 'prop';
+    const r = (n) => Math.round(n * 100) / 100;
+    const id = opts.id || `${type}@${r(obj.position.x)},${r(obj.position.y)},${r(obj.position.z)}`;
+    obj.userData.capsuleAttrs = opts;
+    this.registerEditable(obj, id, type);
+    for (const k in opts) { if (k === 'type' || k === 'id') continue; const h = this.components[k]; if (h) h(obj, opts[k]); }
+    return obj;
+  },
+  tick(dt) { for (const b of this._behaviors) b(dt); },     // call once per frame from your loop
+  blocked(x, z) {                                            // built-in following-collision query
+    for (const b of this._bounds) { const o = b.obj; if (!o.parent || o.visible === false) continue;
+      const cx = o.position.x + b.offX, cz = o.position.z + b.offZ;
+      if (Math.abs(x - cx) < b.w && Math.abs(z - cz) < b.d) return true; }
+    return false;
+  },
 };
+
+// ── built-in attribute components — extend with capsule.component(name, fn) ──
+window.capsule
+  .component('light', (obj, s = {}) => {                     // child light → follows the asset
+    const l = new THREE.PointLight(s.color ?? 0xffffff, s.intensity ?? 1, s.distance ?? 0, s.decay ?? 2);
+    if (s.position) l.position.set(s.position[0], s.position[1], s.position[2]);
+    l.castShadow = !!s.castShadow; obj.add(l); obj.userData.capsuleLight = l;
+  })
+  .component('sound', (obj, s = {}) => {                     // spatial PositionalAudio child → follows
+    const cap = window.capsule;
+    if (!cap._listener) { cap._listener = new THREE.AudioListener(); cap.camera.add(cap._listener); }
+    const a = new THREE.PositionalAudio(cap._listener);
+    a.setRefDistance(s.radius ?? 5); a.setLoop(s.loop ?? true); a.setVolume(s.volume ?? 1);
+    new THREE.AudioLoader().load(s.src, (buf) => { a.setBuffer(buf); if (s.autoplay ?? true) a.play(); }, undefined, () => {});
+    obj.add(a); obj.userData.capsuleSound = a;
+  })
+  .component('collide', (obj, s = {}) => {                   // following AABB → query capsule.blocked(x,z)
+    window.capsule._bounds.push({ obj, w: s.w ?? 0.5, d: s.d ?? 0.5, offX: s.offX ?? 0, offZ: s.offZ ?? 0 });
+  })
+  .component('behavior', (obj, fn) => {                      // per-frame fn(asset, dt) via capsule.tick(dt)
+    window.capsule._behaviors.push((dt) => fn(obj, dt));
+  });
 fetch('./capsule.scenes.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
-  .then(d => { if (d) window.capsule.data = d; window.capsule.scan(); window.capsule._loadAdded(); }).catch(() => {});
+  .then(d => { if (d) window.capsule.data = d; window.capsule.scan(); window.capsule._loadAdded(); window.capsule._applyMeshEdits(); }).catch(() => {});
 setInterval(() => window.capsule.scan(), 1500);
 // ============================================================================
 
@@ -150,12 +216,18 @@ const cube = new THREE.Mesh(
   new THREE.MeshStandardMaterial({ color: 0x4fd6c2 })
 );
 cube.position.set(0, 0.5, 0); cube.castShadow = true;
-scene.add(cube);
-window.capsule.registerEditable(cube, 'starter-cube', 'prop');
+// capsule.add = place + tag + wire attributes. Add attributes as you grow, e.g.:
+//   capsule.add(cube, { type: 'prop', id: 'starter-cube',
+//     collide: { w: 0.5, d: 0.5 },                 // → capsule.blocked(x,z)
+//     light:   { color: 0x4fd6c2, intensity: 1 },  // → child light, follows it
+//     sound:   { src: './assets/audio/hum.mp3' },  // → spatial audio, follows it
+//     behavior: (o, dt) => { o.rotation.y += dt; }, // → per-frame, via capsule.tick(dt)
+//   });
+window.capsule.add(cube, { type: 'prop', id: 'starter-cube' });
 
 // === RENDER LOOP ===
 const clock = new THREE.Clock();
-renderer.setAnimationLoop(() => { clock.getDelta(); renderer.render(scene, camera); });
+renderer.setAnimationLoop(() => { const dt = clock.getDelta(); window.capsule.tick(dt); renderer.render(scene, camera); });
 
 // === RESIZE ===
 addEventListener('resize', () => {

@@ -7,12 +7,32 @@ moat.
 ## Keep the editor working
 
 - **Don't remove the `=== CAPSULE HOOK ===` block** in `index.html` — it's the editor/AI runtime.
-- **Make things editable by tagging them**: `window.capsule.registerEditable(obj, id, type)` or
-  `capsule.tag(obj, { type })`. Anything with a `userData.capsuleId` is auto-detected. Use stable,
-  unique ids — semantic (`player`, `boss`) or positional (`crate@3,-2`). Types: `entity`, `prop`,
-  `pickup`, `plant`, `decal`, `light`.
-- **Placement is data, logic is code.** Don't hardcode positions you want movable — tag the object
-  and let the editor write `capsule.scenes.json`.
+
+- **Add assets with `capsule.add(obj, opts)` — this is the standard.** It parents the object,
+  tags it editable, and wires its *attributes* so they move with it when an editor drags it:
+
+  ```js
+  window.capsule.add(crate, {
+    type: 'prop',                    // entity | prop | pickup | plant | decal | light | trigger | marker
+    id:   'crate@3,-2',              // stable + unique; omit to auto-derive from position
+    collide:  { w: 0.5, d: 0.5 },    // following AABB — query window.capsule.blocked(x, z) in your movement code
+    light:    { color: 0xffaa55, intensity: 2, distance: 8 },   // child light, follows the asset
+    sound:    { src: './assets/audio/buzz.mp3', radius: 6 },    // spatial PositionalAudio child, follows
+    behavior: (o, dt) => { o.rotation.y += dt; },               // per-frame; runs via capsule.tick(dt)
+  });
+  ```
+
+  An asset is **one object (usually a `Group`) that bundles its own attributes.** Children
+  (light, sound) follow transforms for free because they live in the scene graph; `collide` is
+  tied to the object so its footprint tracks the live position. Add your own attribute kinds with
+  `window.capsule.component('name', (obj, spec) => { … })`.
+
+- **Lower-level tagging still works** for objects you place by hand: `capsule.registerEditable(obj,
+  id, type)` or `capsule.tag(obj, { type })`. Anything with a `userData.capsuleId` is auto-detected.
+  Prefer `capsule.add` for anything new — it's the same tag plus the attribute system.
+
+- **Placement is data, logic is code.** Don't hardcode positions you want movable — add/tag the
+  object and let the editor write `capsule.scenes.json`.
 
 ## Project layout
 
