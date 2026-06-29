@@ -542,14 +542,16 @@ export function initCapsuleEditor(capsule) {
     capsule.registerEditable(m, a.id, a.type || 'prop');
     return m;
   }
-  // Recreate editor-added primitives that the game's (possibly older) hook didn't.
+  // Recreate editor-added primitives + prop clones that the game's (possibly older)
+  // hook didn't. GLBs are left to the game hook; clones whose source isn't built yet
+  // are skipped and retried on the next call.
   function ensureAddedPrimitives() {
     const sc = capsule.data.scenes && capsule.data.scenes[editScene];
     if (!sc || !sc.added) return;
     for (const a of sc.added) {
-      if (!a.geo) continue;                                 // GLBs are handled by the game hook
       if (capsule.editable.some((e) => e.id === a.id)) continue;
-      makePrimitiveFromProp(a);
+      if (a.geo) makePrimitiveFromProp(a);
+      else if (a.clone) cloneTrackedFromProp(a);
     }
   }
   async function addSceneFn() {
@@ -603,17 +605,37 @@ export function initCapsuleEditor(capsule) {
   }
   const baseId = (id) => id.replace(/-[a-z0-9]{4}$/, '');
   // Build an "added"-style descriptor for any duplicable object: an existing added
-  // asset (GLB/primitive), or a recognised game primitive (Box / Sphere / Cylinder).
+  // asset (GLB/primitive), a recognised game primitive (Box / Sphere / Cylinder), or —
+  // for a code-built prop (a Group with no single geometry) — a `clone` descriptor that
+  // records "a copy of source-id + this transform" and is reproduced by deep-cloning the
+  // live source object on load. Stays plain readable data in capsule.scenes.json.
   function describeFor(obj, id) {
     const sc = ensureScene();
     const a = (sc.added || []).find((x) => x.id === id);
     if (a) return { ...a };
+    const x = xform(obj);
+    const type = obj.userData.capsuleType || 'prop';
     const t = obj.geometry && obj.geometry.type;
     const shape = t === 'SphereGeometry' ? 'sphere' : t === 'CylinderGeometry' ? 'cylinder' : t === 'BoxGeometry' ? 'box' : null;
-    if (!shape) return null;
-    const color = (obj.material && obj.material.color) ? '#' + obj.material.color.getHexString() : '#9aa0aa';
-    const x = xform(obj);
-    return { id, geo: { shape }, color, type: obj.userData.capsuleType || 'prop', position: x.position, rotation: x.rotation, scale: x.scale };
+    if (shape) {
+      const color = (obj.material && obj.material.color) ? '#' + obj.material.color.getHexString() : '#9aa0aa';
+      return { id, geo: { shape }, color, type, position: x.position, rotation: x.rotation, scale: x.scale };
+    }
+    // Code-built prop: duplicate by cloning the live source (by its id) at load time.
+    return { id, clone: id, type, position: x.position, rotation: x.rotation, scale: x.scale };
+  }
+  // Recreate a duplicated code-built prop by deep-cloning its live source object.
+  function cloneTrackedFromProp(a) {
+    const src = capsule.editable.find((e) => e.id === a.clone);
+    if (!src || !src.obj) return null;                     // source not built yet — caller retries
+    const o = src.obj.clone(true);
+    o.userData.capsuleAdded = true;
+    if (a.position) o.position.set(a.position[0], a.position[1], a.position[2]);
+    if (a.rotation) o.rotation.set(a.rotation[0] * DEG, a.rotation[1] * DEG, a.rotation[2] * DEG);
+    if (a.scale)    o.scale.set(a.scale[0], a.scale[1], a.scale[2]);
+    scene.add(o);
+    capsule.registerEditable(o, a.id, a.type || src.type || 'prop');
+    return o;
   }
   const idOfObj = (obj) => (capsule.editable.find((e) => e.obj === obj) || {}).id;
   async function duplicateObj(obj) {
@@ -625,7 +647,10 @@ export function initCapsuleEditor(capsule) {
     const p = d.position || [0, 0, 0];
     const copy = { ...d, id: nid, position: [p[0] + 1, p[1], p[2] + 1] };   // offset so the copy is visible
     recordAdded(copy);
-    const o = copy.geo ? makePrimitiveFromProp(copy) : await capsule.addObject(copy);
+    const o = copy.geo ? makePrimitiveFromProp(copy)
+      : copy.clone ? cloneTrackedFromProp(copy)
+      : await capsule.addObject(copy);
+    if (!o) return flash("couldn't clone — source not loaded yet, try again");
     refreshList(); select(o, false); markDirty(); flash('duplicated → ' + nid);
   }
   function deleteObj(obj) {

@@ -112,7 +112,16 @@ window.capsule = {
   _loadAdded() {
     const sc = this.data.scenes?.[this.activeScene]; if (!sc?.added) return;
     for (const a of sc.added) {
-      if (this._added.has(a.id)) continue; this._added.add(a.id);
+      if (this._added.has(a.id)) continue;
+      // Duplicate of a code-built prop: deep-clone the live source object by id. Skip
+      // without marking done if the source isn't built yet (periodic _loadAdded retries).
+      if (a.clone) {
+        const src = this.editable.find(e => e.id === a.clone); if (!src) continue;
+        this._added.add(a.id);
+        const o = src.obj.clone(true); o.userData.capsuleAdded = true; _apply(o, a);
+        this.scene.add(o); this.registerEditable(o, a.id, a.type || src.type || 'prop'); continue;
+      }
+      this._added.add(a.id);
       if (a.geo) { const m = this._prim(a.geo, a.color); m.userData.capsuleAdded = true; _apply(m, a);
         this.scene.add(m); this.registerEditable(m, a.id, a.type || 'prop'); continue; }
       this.loadModel(a.src).then(obj => { obj.userData.capsuleAdded = true; _apply(obj, a); this.scene.add(obj);
@@ -168,7 +177,7 @@ window.capsule
   });
 fetch('./capsule.scenes.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
   .then(d => { if (d) window.capsule.data = d; window.capsule.scan(); window.capsule._loadAdded(); }).catch(() => {});
-setInterval(() => window.capsule.scan(), 1500);
+setInterval(() => { window.capsule.scan(); window.capsule._loadAdded(); }, 1500);
 // ============================================================================
 
 // === WORLD (flat sprites — MeshBasicMaterial is unlit, so 2D reads crisp) ===
