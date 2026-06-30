@@ -98,7 +98,53 @@ setInterval(() => window.capsule.scan(), 1500);
 
 **The rule: an object is editable iff it carries a `userData.capsuleId`.** The `scan()` runs
 on a timer and registers anything tagged — so it doesn't matter which function, async loader,
-or loop rebuild created the object. There are three ways to tag, in order of preference:
+or loop rebuild created the object.
+
+### The standard way: `capsule.add(obj, opts)`
+
+For anything you add in new code, `capsule.add` is the one call to reach for. It parents the
+object, tags it editable, and wires its **attributes** so they travel with it — an asset becomes
+one self-contained thing that carries its own collision, light, sound, and behavior:
+
+```js
+window.capsule.add(crate, {
+  type: 'prop',                          // entity · prop · pickup · plant · decal · light · trigger · marker
+  id:   'crate@3,-2',                    // stable + unique; omit to auto-derive from position
+  collide:  { w: 0.5, d: 0.5 },          // a following AABB — test it with capsule.blocked(x, z)
+  light:    { color: 0xffaa55, intensity: 2, distance: 8 },   // a child light (follows the asset)
+  sound:    { src: './assets/audio/buzz.mp3', radius: 6 },    // spatial PositionalAudio child (follows)
+  behavior: (o, dt) => { o.rotation.y += dt; },               // per-frame; runs via capsule.tick(dt)
+});
+```
+
+An asset is **one object (usually a `Group`) that bundles its attributes.** Children that live in
+the scene graph — the light, the sound — follow the object's transform for free, so when you (or
+an editor user) drag the crate, its glow and its hum move with it. `collide` is tied to the object
+the same way, so its footprint tracks the live position — no more invisible walls left behind when
+something moves or gets duplicated.
+
+Two small contracts make the attributes live:
+
+- Call `window.capsule.tick(clock.getDelta())` once per frame in your loop (drives every `behavior`).
+- Query `window.capsule.blocked(x, z)` in your movement code (honours every `collide`).
+
+Add your own attribute kinds with `capsule.component(name, fn)` — each handler gets `(obj, spec)`:
+
+```js
+window.capsule.component('spin', (obj, speed = 1) => {
+  window.capsule._behaviors.push((dt) => { obj.rotation.y += speed * dt; });
+});
+window.capsule.add(fan, { type: 'prop', spin: 2 });   // → spins every frame, and is editable
+```
+
+`capsule.add`, the built-in components (`collide` · `light` · `sound` · `behavior`), and
+`tick`/`blocked` ship in the template hook (`index.html`), so new projects have them out of the
+box; the template `CLAUDE.md` documents the same set.
+
+### Lower-level tagging (for adapting an existing game)
+
+When you're retrofitting a game that already builds and places its objects, tag them where they're
+made — `capsule.add` is just these plus the attribute system. Three ways, in order of preference:
 
 1. **A detector** — when many objects share a marker, describe the pattern once:
    ```js
@@ -222,17 +268,47 @@ saves only its differences. See [SCENES.md](SCENES.md) for the layering model an
 5. **Save** writes `capsule.scenes.json` — full transforms for Base, minimal deltas for a state.
 6. Reload without `?edit`: the game applies `base ⊕ state` on load and reflects your edits.
 
+You can also **duplicate** or **delete** a selected asset from its row in the panel (or `D` to
+duplicate). Duplicating a code-built prop is recorded as a readable `clone` entry in
+`capsule.scenes.json` and reproduced by cloning the live source on load — so the copy survives a
+reload, collision and all.
+
+---
+
+## Mosaic — design with reference images
+
+Models design far better from pictures than from prose. **Mosaic** is a per-project visual
+moodboard for exactly that: a freeform canvas where you drop concept art, screenshots, and
+storyboards, group them into boards, and point the AI at them.
+
+- **Open it** from the editor (the `❏` button), the play bar, the welcome screen, or `⌘⇧M`.
+- **Add references** by dragging image files straight onto the canvas (they're copied into
+  `mosaic/<board>/`), or with **＋ Image / Note / Link**. Make as many boards as you like — one
+  per concern (characters, environments, UI…).
+- **"✦ Reference in chat"** types a prompt like *"Take a look at the reference images in
+  `./mosaic/characters/` (clara.png, …) and …"* straight into the AI box, so you just finish the
+  sentence — e.g. *"…design a sprite that looks like Clara."*
+- **Design-first.** Open Mosaic with no project to get a chooser: open an existing board, or
+  **＋ New empty game** (pick 2D/3D · PC/Mobile) and build the moodboard before a line of code.
+
+It's all plain files — images in `mosaic/<board>/`, layout in a readable `mosaic.json` — so any
+agent reads your references the same way it reads the rest of the game. The `mosaic/` folder is
+**dev-only**: it's excluded from `export/build.sh` and never ships inside the exported game.
+
 ---
 
 ## Starting a new project — checklist
 
-- [ ] Expose `window.capsule` early (Step 1).
+- [ ] Expose `window.capsule` early (Step 1) — or just start from the template, which ships the hook.
 - [ ] Decide your **types** up front (the standard set usually fits).
-- [ ] Tag assets as you create them — `capsule.tag(obj, { type })`. Prefer a **detector** per
-      category you already mark in `userData`.
-- [ ] Group multi-mesh props so they move as a unit.
+- [ ] Add assets with `capsule.add(obj, { type, id, collide, light, sound, behavior })` so each
+      one carries its own attributes. Call `capsule.tick(dt)` once per frame; query
+      `capsule.blocked(x, z)` for collision. (Adapting an existing game instead? Tag at the spawn
+      site — prefer a **detector** per category you already mark in `userData`.)
+- [ ] Group multi-mesh props in a `THREE.Group` so they move as a unit.
 - [ ] `defineScene` for each level; call `setActiveScene` / `setActiveState` on transitions.
 - [ ] Open `?edit`, clear the **⚠ untagged** list of anything you want movable.
+- [ ] Collect visual direction in **Mosaic** (`⌘⇧M`) and "Reference in chat" to brief the AI.
 - [ ] Commit `capsule.scenes.json` alongside the game — it's plain readable data.
 
 ## Troubleshooting

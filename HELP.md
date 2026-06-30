@@ -91,7 +91,9 @@ scene, sized, grounded, and made editable. (Or just ask the AI box to add one.)
 | **Object panel** | Everything editable, grouped by type (`entity`/`prop`/`pickup`/`plant`/`decal`/…). The **⚠ untagged** list surfaces assets that aren't editable yet. |
 | **Gizmo** | `W` move · `E` rotate · `R` scale · `Esc` deselect |
 | **Inspector** | Type exact position / rotation° / scale |
+| **Duplicate / Delete** | Copy (`D`) or remove the selected asset from its panel row — a copy keeps its collision and attributes |
 | **Save** | `⌘S` → `capsule.scenes.json` (saved straight to disk in the app) |
+| **Mosaic** | `❏` or `⌘⇧M` — a visual moodboard to brief the AI (see below) |
 | **Play / Edit** | ▶ Play runs the game · ✎ Edit (or ⌘E) returns |
 
 ## The AI box
@@ -102,13 +104,26 @@ scene, sized, grounded, and made editable. (Or just ask the AI box to add one.)
 - It reaches the editor through Capsule's **MCP server** (`list_editables`, `select`, `move`,
   `screenshot`, …), so the agent can *see* the scene and place things.
 
+## Mosaic — brief the AI with pictures
+
+AI designs better from images than from text. **Mosaic** (`❏` / `⌘⇧M`) is a per-project visual
+moodboard: drag concept art, screenshots, and storyboards onto a freeform canvas, sort them into
+boards, and hit **✦ Reference in chat** — it types *"Take a look at the reference images in
+`./mosaic/<board>/` …"* into the AI box so you can finish with *"…make the menu look like this."*
+Open it with no project to start **design-first** — collect references, then **＋ New empty game**
+(2D/3D · PC/Mobile) and build from them. References are plain files in `mosaic/`; they never ship
+in the exported game.
+
 ## Making your game editable (for the code-curious)
 
 An object becomes editable just by carrying a `userData.capsuleId`. The scaffold tags a starter
-cube for you; to make more things editable, tag them:
+cube for you; the standard way to add more is `capsule.add`, which tags the object **and** wires
+its attributes (collision, light, sound, behavior) so they move with it:
 
 ```js
-capsule.tag(obj, { type: 'prop' });          // auto-ids from position
+capsule.add(crate, { type: 'prop', collide: { w: 0.5, d: 0.5 }, light: { intensity: 2 } });
+// adapting an existing game? tag at the spawn site instead:
+capsule.tag(obj, { type: 'prop' });                 // auto-ids from position
 capsule.registerEditable(boss, 'boss', 'entity');
 ```
 
