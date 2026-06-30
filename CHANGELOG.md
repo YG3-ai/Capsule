@@ -3,10 +3,21 @@
 All notable changes to Capsule are recorded here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); dates are `YYYY-MM-DD`.
 
-## [0.2.0] — 2026-06-29 — Mosaic, encapsulated assets & duplication
+## [0.2.0] — 2026-06-29 — Show the AI what you mean: Mosaic & reference pins
+
+The theme of this release is **visual communication with the AI** — briefing it with reference
+images, and pointing it at exactly what you mean in the scene — plus assets that carry their own
+behavior so they stay correct when you move them.
 
 ### Added
 
+- **Point the AI at your view — `look` + reference pins.** ⭐ Aim the editor camera (or drop
+  numbered **reference pins** with the new `◎` toolbar mode — click any surface to say *"I mean
+  THIS"*) and ask the AI to **`look`**. It gets a screenshot of your current view *plus* the object
+  centred under your crosshair, the editables on-screen ranked by centrality, and **each pin's
+  world point and nearest editable** — so *"extend the upper floor between these two pins"* just
+  works. Click a pin to remove it; ⇧-click `◎` or the `clear_markers` tool clears them all. Pins
+  are annotations only — they never touch the editable list or `capsule.scenes.json`.
 - **Mosaic — a visual moodboard.** A per-project Milanote-style board for collecting visual
   direction: drag in concept art, screenshots and storyboards on a freeform canvas, add note
   and link cards, and organize multiple boards (folders) per project. Reach it from the welcome
@@ -27,11 +38,6 @@ All notable changes to Capsule are recorded here. The format loosely follows
 - **Duplicate any prop in the editor** — including code-built `Group`s — via per-row controls,
   the ＋Add menu, or `D`. Duplicates of procedural props are persisted as readable `clone`
   descriptors in `capsule.scenes.json` and reproduced by cloning the live source on load.
-- **Point the AI at your view — `look` + reference pins.** A `look` MCP tool returns a screenshot
-  of the user's current editor view plus the object centred under the crosshair and the editables
-  on-screen. The new `◎` toolbar mode drops numbered **reference pins** on surfaces ("I mean
-  *this*"); `look` reports each pin's world point and nearest editable, and `clear_markers` (or
-  ⇧-click `◎`) removes them.
 
 ### Changed
 
