@@ -67,6 +67,22 @@ function makeServer(getWindow) {
       return { content: [{ type: 'image', data: img.toPNG().toString('base64'), mimeType: 'image/png' }] };
     });
 
+  server.registerTool('look',
+    { description: "See what the user is looking at. Returns a screenshot of their CURRENT editor view, the object centred under their crosshair, the editables on-screen (ranked by how central they are), and any reference PINS they dropped (numbered ◎ markers placed on surfaces to say \"I'm pointing at THIS\" — each with its world point and nearest editable). Use this whenever the user references their view or pins — \"see what I'm looking at\", \"this\", \"that one\", \"this area\", \"the things I pinned\" — so you act on exactly what they're indicating. The surrounding view is intentionally included for context." },
+    async () => {
+      await ready();
+      let info = null; try { info = await execJS('JSON.stringify(window.capsule.editor.lookingAt())'); } catch {}
+      const w = win(); if (!w || w.isDestroyed()) throw new Error('Capsule has no project open');
+      const img = await w.webContents.capturePage();
+      const content = [{ type: 'image', data: img.toPNG().toString('base64'), mimeType: 'image/png' }];
+      if (info) content.push({ type: 'text', text: info });
+      return { content };
+    });
+
+  server.registerTool('clear_markers',
+    { description: 'Remove all reference pins the user dropped in the editor. Call this after you\'ve acted on them (or when the user says to clear the pins).' },
+    async () => { await ready(); const n = await execJS('window.capsule.editor.clearPins()'); return text(`cleared ${n} reference pin(s)`); });
+
   return server;
 }
 

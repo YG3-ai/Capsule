@@ -27,6 +27,11 @@ All notable changes to Capsule are recorded here. The format loosely follows
 - **Duplicate any prop in the editor** — including code-built `Group`s — via per-row controls,
   the ＋Add menu, or `D`. Duplicates of procedural props are persisted as readable `clone`
   descriptors in `capsule.scenes.json` and reproduced by cloning the live source on load.
+- **Point the AI at your view — `look` + reference pins.** A `look` MCP tool returns a screenshot
+  of the user's current editor view plus the object centred under the crosshair and the editables
+  on-screen. The new `◎` toolbar mode drops numbered **reference pins** on surfaces ("I mean
+  *this*"); `look` reports each pin's world point and nearest editable, and `clear_markers` (or
+  ⇧-click `◎`) removes them.
 
 ### Changed
 

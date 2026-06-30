@@ -273,6 +273,15 @@ duplicate). Duplicating a code-built prop is recorded as a readable `clone` entr
 `capsule.scenes.json` and reproduced by cloning the live source on load — so the copy survives a
 reload, collision and all.
 
+**Point the AI at things (`◎` + `look`).** When you're working with the AI box, you rarely want to
+spell out coordinates. Aim the camera at an area, or hit **`◎`** and drop **reference pins** —
+numbered crosshairs you click onto any surface to say *"I mean this."* Then ask the AI to `look`:
+the MCP `look` tool returns a **screenshot of your current view** plus the object centred under
+your crosshair, the editables on-screen (ranked by centrality), and **each pin's world point and
+nearest editable**. So *"extend the upper floor between these two pins"* just works. Click a pin to
+remove it, ⇧-click `◎` (or the `clear_markers` tool) to clear all, `Esc` to exit. Pins are
+annotations only — they never enter the editable list or `capsule.scenes.json`.
+
 ---
 
 ## Mosaic — design with reference images

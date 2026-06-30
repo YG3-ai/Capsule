@@ -113,7 +113,7 @@ export function initCapsuleEditor(capsule) {
   // ── UI ────────────────────────────────────────────────
   const ui = injectUI();
   const { hud, list, saveBtn, modeBtns, sceneSel, layerSel, undoBtn, redoBtn, playBtn, homeBtn, codeBtn,
-          mosaicBtn, addBtn, frameBtn, flyBtn, aiBtn, meshBtn, matEl, colInput, texName, texRepBtn, texDelBtn,
+          mosaicBtn, addBtn, frameBtn, flyBtn, aiBtn, meshBtn, pinsBtn, matEl, colInput, texName, texRepBtn, texDelBtn,
           pop, ask, inspEl, inspInputs } = ui;
   // The editor has its own HUD — hide the game's top-left HUD so they don't overlap.
   const gameHud = document.getElementById('hud'); if (gameHud) gameHud.style.display = 'none';
@@ -132,7 +132,51 @@ export function initCapsuleEditor(capsule) {
   // edits by a stable signature (name + geometry + original position) under
   // capsule.data.scenes[scene].meshEdits, and re-apply by matching on load.
   let pickAll = false;
+  let pinMode = false;
+  const refPins = [];   // reference reticles the user drops to point the AI at things; NOT editable assets
   const _texLoader = new THREE.TextureLoader();
+
+  // ── Reference reticles ("I'm pointing at this") ───────
+  // Numbered crosshair sprites the user drops on surfaces to mark what they're referencing.
+  // They're depth-test-off so they read through geometry and show in the `look` screenshot,
+  // and excluded from the editable registry. The `look` MCP tool reports their world points.
+  function makePinSprite(n) {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const x = c.getContext('2d'); x.translate(64, 64);
+    x.lineCap = 'round';
+    x.strokeStyle = 'rgba(10,10,14,0.9)'; x.lineWidth = 12; ring(x); ticks(x);
+    x.strokeStyle = '#E8B84B'; x.lineWidth = 6; ring(x); ticks(x);
+    x.fillStyle = 'rgba(10,10,14,0.92)'; x.beginPath(); x.arc(0, 0, 19, 0, Math.PI * 2); x.fill();
+    x.fillStyle = '#E8B84B'; x.font = 'bold 30px Satoshi, Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(String(n), 0, 1);
+    function ring(g) { g.beginPath(); g.arc(0, 0, 42, 0, Math.PI * 2); g.stroke(); }
+    function ticks(g) { for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) { g.save(); g.rotate(a); g.beginPath(); g.moveTo(0, -54); g.lineTo(0, -34); g.stroke(); g.restore(); } }
+    const tex = new THREE.CanvasTexture(c); tex.anisotropy = 4;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, transparent: true }));
+    s.scale.set(0.85, 0.85, 0.85); s.renderOrder = 99999; s.userData.capsuleReticle = true;
+    return s;
+  }
+  function addPin(point) {
+    const s = makePinSprite(refPins.length + 1);
+    s.position.copy(point); scene.add(s);
+    refPins.push({ obj: s, point: point.clone() });
+    flash(`reference pin ${refPins.length} dropped · click a pin to remove · Esc to finish`);
+    return refPins.length;
+  }
+  function removePin(obj) {
+    const i = refPins.findIndex((p) => p.obj === obj); if (i < 0) return false;
+    const rest = refPins.filter((_, j) => j !== i).map((p) => p.point.clone());
+    clearPins(); rest.forEach(addPin);   // rebuild so numbering stays 1..n
+    flash(`${refPins.length} reference pin${refPins.length === 1 ? '' : 's'}`);
+    return true;
+  }
+  function clearPins() { const k = refPins.length; for (const p of refPins) scene.remove(p.obj); refPins.length = 0; return k; }
+  // Raycast against everything visible (incl. structural walls/floors) for pin placement.
+  function surfaceUnderRay() {
+    const hits = ray.intersectObject(scene, true);
+    return hits.find((h) => { let o = h.object; if (!o.isMesh || o.visible === false) return false;
+      for (let p = o; p; p = p.parent) { if (p === gizmoHelper || (p.userData && p.userData.capsuleReticle)) return false; } return true; });
+  }
   const isMeshObj = (o) => !!(o && o.isMesh);
   const isLoose = (o) => !!o && !isTracked(o);   // any untracked object (mesh OR untagged asset group)
   // Baked/merged/loop-rebuilt structure (e.g. theConsumed's cbox/cAdd world) can't be
@@ -327,6 +371,12 @@ export function initCapsuleEditor(capsule) {
     ptr.x = (e.clientX / window.innerWidth) * 2 - 1;
     ptr.y = -(e.clientY / window.innerHeight) * 2 + 1;
     ray.setFromCamera(ptr, camera);
+    if (pinMode) {   // reference-pin mode — click a pin to remove it, else drop one on the surface
+      const pinHit = ray.intersectObjects(refPins.map((p) => p.obj), false)[0];
+      if (pinHit) return removePin(pinHit.object);
+      const surf = surfaceUnderRay();
+      return addPin(surf ? surf.point : ray.ray.at(8, new THREE.Vector3()));
+    }
     if (pickAll) {   // mesh mode — pick any mesh (walls, floors, structure)
       const hit = ray.intersectObjects(allMeshes(), true)[0];
       return select(hit ? hit.object : null);
@@ -704,6 +754,11 @@ export function initCapsuleEditor(capsule) {
   meshBtn.onclick = () => { pickAll = !pickAll; meshBtn.classList.toggle('on', pickAll);
     if (!pickAll && isLoose(selected)) select(null);
     flash(pickAll ? 'mesh mode — click any wall / floor / mesh to edit + retexture' : 'mesh mode off'); };
+  pinsBtn.onclick = (e) => {
+    if (e.shiftKey && refPins.length) { const k = clearPins(); pinMode = false; pinsBtn.classList.remove('on'); return flash(`cleared ${k} reference pin${k === 1 ? '' : 's'}`); }
+    pinMode = !pinMode; pinsBtn.classList.toggle('on', pinMode);
+    if (pinMode && pickAll) { pickAll = false; meshBtn.classList.remove('on'); }
+    flash(pinMode ? 'reference pins — click a surface to drop one for the AI · click a pin to remove · ⇧-click ◎ to clear all' : 'reference pins off'); };
   // ✨ AI box toggle — needs the app bridge; hide it in a plain browser.
   if (window.capsuleHost && window.capsuleHost.toggleAI) aiBtn.onclick = () => window.capsuleHost.toggleAI();
   else aiBtn.style.display = 'none';
@@ -749,7 +804,7 @@ export function initCapsuleEditor(capsule) {
     else if (k === 'f') frameAll();
     else if (k === 'd') duplicateSelected();
     else if (k === 'delete' || k === 'backspace') { e.preventDefault(); deleteSelected(); }
-    else if (k === 'escape') select(null);
+    else if (k === 'escape') { if (pinMode) { pinMode = false; pinsBtn.classList.remove('on'); flash('reference pins off'); } else select(null); }
   }, true);
 
   // ── API used by the MCP server (drive the editor from Claude) ─
@@ -771,6 +826,42 @@ export function initCapsuleEditor(capsule) {
     pushUndo(obj, before, snap(obj));
     markDirty(); if (selected === obj) writeSelected();
     return true;
+  }
+  // "What is the user looking at?" — raycast from the dead-centre of their current view for the
+  // object under the crosshair, then list the editables on-screen ranked by how central they are.
+  // Pairs with the MCP `look` tool (which also grabs a screenshot of the same view).
+  function lookingAt() {
+    camera.updateMatrixWorld();
+    const v3 = (p) => [r3(p.x), r3(p.y), r3(p.z)];
+    // centred: raycast straight ahead (NDC 0,0)
+    ray.setFromCamera({ x: 0, y: 0 }, camera);
+    let centered = null;
+    const edObjs = capsule.editable.map((e) => e.obj).filter(Boolean);
+    const hit = ray.intersectObjects(edObjs, true)[0];
+    if (hit) {
+      let o = hit.object; while (o && !(o.userData && o.userData.capsuleId)) o = o.parent;
+      if (o) centered = { id: o.userData.capsuleId, type: o.userData.capsuleType || 'object', distance: r3(hit.distance), point: v3(hit.point) };
+    }
+    if (!centered) {   // nothing tagged under the crosshair → report the raw surface so the spot is still known
+      const mh = ray.intersectObjects(allMeshes(), true)[0];
+      if (mh) centered = { id: null, type: 'untagged', name: mh.object.name || mh.object.type, distance: r3(mh.distance), point: v3(mh.point) };
+    }
+    // in view: project every editable to the screen; keep on-screen ones, nearest-to-centre first
+    const v = new THREE.Vector3(), wp = new THREE.Vector3(); const inView = [];
+    for (const e of capsule.editable) {
+      const obj = e.obj; if (!obj || !obj.parent || obj.visible === false) continue;
+      obj.getWorldPosition(wp); v.copy(wp).project(camera);
+      if (v.z > 1 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1) continue;   // behind camera or off-screen
+      inView.push({ id: e.id, type: e.type, screen: [r1(v.x), r1(v.y)], offCenter: r3(Math.hypot(v.x, v.y)), distance: r3(camera.position.distanceTo(wp)) });
+    }
+    inView.sort((a, b) => a.offCenter - b.offCenter);
+    // reference pins the user dropped — the explicit "I'm pointing at this" markers
+    const pins = refPins.map((p, i) => {
+      let near = null, best = Infinity;
+      for (const e of capsule.editable) { if (!e.obj) continue; const d = e.obj.getWorldPosition(wp).distanceTo(p.point); if (d < best) { best = d; near = e.id; } }
+      return { n: i + 1, point: v3(p.point), nearestEditable: near, nearestDistance: best === Infinity ? null : r3(best) };
+    });
+    return { centered, pins, inView: inView.slice(0, 16), camera: { position: v3(camera.position), lookingToward: v3(orbit.target) } };
   }
 
   // ── GLB drag-drop import (silent — no overlay hint; just drop a .glb to add it) ──
@@ -795,7 +886,7 @@ export function initCapsuleEditor(capsule) {
   writeSelected();
   capsule.editor = { select, frameObject, setMode, save, previewLayer, buildLayer, undo, redo, applyInspector,
     addPrimitive, addScene: addSceneFn, addState: addStateFn, addAsset, duplicate: duplicateSelected, remove: deleteSelected, frameAll,
-    byId, list: listEditables, setTransform, selectById: (id) => select(byId(id), true),
+    byId, list: listEditables, setTransform, lookingAt, clearPins, selectById: (id) => select(byId(id), true),
     get scene() { return editScene; }, get layer() { return editLayer; },
     get undoDepth() { return undoStack.length; }, get redoDepth() { return redoStack.length; },
     setLayer(l) { editLayer = l; layerSel.value = l; previewLayer(); },
@@ -915,6 +1006,7 @@ function injectUI() {
     `<button id="cap-t" class="on">Move</button><button id="cap-r">Rotate</button><button id="cap-s">Scale</button>` +
     `<div class="sep"></div><button id="cap-add">＋ Add</button>` +
     `<div class="sep"></div><button class="ic" id="cap-mesh" data-tip="Edit any mesh — walls, floors, structure">▦</button>` +
+    `<button class="ic" id="cap-pins" data-tip="Reference pins — drop to point the AI at things · click a pin to remove · ⇧-click to clear all">◎</button>` +
     `<button class="ic" id="cap-frame" data-tip="Frame · F">⛶</button><button class="ic" id="cap-fly" data-tip="Fly · W A S D / Q E">✥</button>` +
     `<button class="ic" id="cap-undo" data-tip="Undo · ⌘Z">↶</button><button class="ic" id="cap-redo" data-tip="Redo · ⌘⇧Z">↷</button>` +
     `<div class="sep"></div><button class="ic" id="cap-home" data-tip="Welcome screen">⌂</button><button class="ic" id="cap-mosaic" data-tip="Mosaic · moodboard">❏</button><button class="ic" id="cap-code" data-tip="Open in VS Code">&lt;/&gt;</button><button class="ic" id="cap-ai" data-tip="AI box · ⌘J">✨</button>` +
@@ -963,7 +1055,7 @@ function injectUI() {
     codeBtn: bar.querySelector('#cap-code'), addBtn: bar.querySelector('#cap-add'),
     mosaicBtn: bar.querySelector('#cap-mosaic'),
     frameBtn: bar.querySelector('#cap-frame'), flyBtn: bar.querySelector('#cap-fly'),
-    aiBtn: bar.querySelector('#cap-ai'), meshBtn: bar.querySelector('#cap-mesh'),
+    aiBtn: bar.querySelector('#cap-ai'), meshBtn: bar.querySelector('#cap-mesh'), pinsBtn: bar.querySelector('#cap-pins'),
     matEl: insp.querySelector('#cap-mat'), colInput: insp.querySelector('#cap-col'),
     texName: insp.querySelector('#cap-texname'), texRepBtn: insp.querySelector('#cap-tex-rep'),
     texDelBtn: insp.querySelector('#cap-tex-del'),

@@ -92,6 +92,7 @@ scene, sized, grounded, and made editable. (Or just ask the AI box to add one.)
 | **Gizmo** | `W` move · `E` rotate · `R` scale · `Esc` deselect |
 | **Inspector** | Type exact position / rotation° / scale |
 | **Duplicate / Delete** | Copy (`D`) or remove the selected asset from its panel row — a copy keeps its collision and attributes |
+| **Reference pins** | `◎` — drop numbered crosshairs on surfaces to point the AI at exact spots. Click a pin to remove · ⇧-click `◎` to clear all · `Esc` exits |
 | **Save** | `⌘S` → `capsule.scenes.json` (saved straight to disk in the app) |
 | **Mosaic** | `❏` or `⌘⇧M` — a visual moodboard to brief the AI (see below) |
 | **Play / Edit** | ▶ Play runs the game · ✎ Edit (or ⌘E) returns |
@@ -102,7 +103,11 @@ scene, sized, grounded, and made editable. (Or just ask the AI box to add one.)
   last conversation, `codex`, `aider`, or custom).
 - It runs in the project dir with your real shell environment, so it uses each tool's own auth.
 - It reaches the editor through Capsule's **MCP server** (`list_editables`, `select`, `move`,
-  `screenshot`, …), so the agent can *see* the scene and place things.
+  `screenshot`, `look`, …), so the agent can *see* the scene and place things.
+- **Point at things with `look`.** Aim the camera (or drop `◎` reference pins) and say *"see what
+  I'm looking at"* / *"use what I pinned"* — `look` returns a screenshot of your current view plus
+  the object you've centred and each pin's exact spot, so the AI acts on what you're indicating.
+  When it's done, *"clear the pins"* (the `clear_markers` tool) or ⇧-click `◎`.
 
 ## Mosaic — brief the AI with pictures
 
