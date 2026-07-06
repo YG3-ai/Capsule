@@ -3,7 +3,7 @@
 A thin visual editor for three.js games that stay **plain, readable text** -> HTML, CSS,
 JavaScript, with no build step, no bundler, nothing to compile. Easy to use and painless to augment with your own tools.
 
-![The Capsule editor](docs/img/editor.png)
+![The Capsule editor — drag objects in the viewport while the AI works alongside you](docs/media/07-ai-box.png)
 
 Capsule is free and open source for all game devs!
 
@@ -23,13 +23,19 @@ any model can open the source and have a working game one second later.
 
 ## Screenshots
 
-**Describe a game to the AI — it writes the code *and* places things in the live scene:**
+**Drag objects into place — the move/rotate/scale gizmo, with the inspector mirroring exact numbers:**
 
-![AI box](docs/img/aibox.png)
+![The editor gizmo and inspector](docs/media/drag.gif)
 
-**Then drag to refine and hit ▶ Play:**
+**Point the AI at what you mean — drop reference pins and say "look":**
 
-![A running game](docs/img/game.png)
+![Reference pins in the editor](docs/media/03-pins.png)
+
+**Mosaic — a per-project moodboard to brief the AI with pictures:**
+
+![The Mosaic moodboard](docs/media/04-mosaic.png)
+
+📖 **[Read the full visual walkthrough → HELP.md](HELP.md)**
 
 ## Docs
 

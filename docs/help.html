@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Capsule — Help</title>
+</head>
+<body>
+<style>
+  :root{
+    --bg:#0A0A0E; --bg-2:#0d0d12;
+    --panel:#131117; --panel-2:#17151c;
+    --line:rgba(240,228,208,.10); --line-strong:rgba(240,228,208,.18);
+    --ink:#F6F3ED; --muted:rgba(246,243,237,.62); --dim:rgba(246,243,237,.40); --faint:rgba(246,243,237,.26);
+    --gold:#D4A04A; --gold-bright:#E8B84B; --ember:#C8643D;
+    --gold-soft:rgba(212,160,74,.10); --gold-line:rgba(212,160,74,.34);
+    --sans:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+    --measure:44rem;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:
+      radial-gradient(1100px 560px at 50% -280px,rgba(212,160,74,.10),transparent 60%),
+      radial-gradient(700px 500px at 100% -120px,rgba(200,100,61,.06),transparent 55%),
+      var(--bg);
+    color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.65;
+    -webkit-font-smoothing:antialiased;letter-spacing:-.005em;
+  }
+  ::selection{background:rgba(212,160,74,.28)}
+  a{color:var(--gold-bright);text-decoration:none;border-bottom:1px solid var(--gold-line)}
+  a:hover{color:#fff;border-color:currentColor}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--gold);outline-offset:3px;border-radius:3px}
+
+  /* header */
+  header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:11px;
+    padding:13px 24px;background:rgba(10,10,14,.72);backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--line)}
+  .mark{width:20px;height:20px;border-radius:6px;flex:0 0 auto;
+    background:linear-gradient(135deg,var(--gold-bright),#E0973F 55%,var(--ember));
+    box-shadow:0 3px 14px rgba(224,151,63,.35)}
+  .brand{font-weight:750;letter-spacing:.16em;text-transform:uppercase;font-size:12.5px;color:var(--muted)}
+  header .sep{color:var(--faint);font-size:12.5px}
+  header .where{font-size:12.5px;color:var(--dim);letter-spacing:.06em}
+  header .spacer{flex:1}
+  header .home{font-size:12.5px;color:var(--dim);border:0}
+
+  /* layout */
+  main{max-width:var(--measure);margin:0 auto;padding:0 24px 120px}
+  .wide{max-width:60rem;margin-left:auto;margin-right:auto}
+  section{padding-top:64px}
+  .eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin:0 0 14px}
+  h1{font-size:clamp(40px,7vw,60px);line-height:1.02;letter-spacing:-.03em;font-weight:820;
+    margin:0 0 20px;text-wrap:balance}
+  h1 .dot{color:var(--gold)}
+  h2{font-size:clamp(25px,3.6vw,32px);line-height:1.12;letter-spacing:-.022em;font-weight:780;
+    margin:0 0 16px;text-wrap:balance}
+  h3{font-size:18px;font-weight:700;letter-spacing:-.01em;margin:26px 0 6px;color:var(--ink)}
+  p{margin:0 0 18px;color:var(--muted);max-width:var(--measure)}
+  .lede{font-size:20.5px;line-height:1.55;color:rgba(246,243,237,.82);max-width:40rem}
+  strong{color:var(--ink);font-weight:670}
+  em.k{font-style:normal;color:var(--gold-bright);font-weight:600}
+  code{font-family:var(--mono);font-size:.86em;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:6px;padding:.12em .4em;color:#f0dcae;white-space:nowrap}
+
+  /* hero */
+  .hero{padding-top:64px}
+  .hero .sub{max-width:39rem}
+  .hero .sub b{color:var(--ink);font-weight:650}
+
+  /* figures */
+  figure{margin:26px 0 8px}
+  figure.fig{margin:30px auto 10px}
+  .shot{border:1px solid var(--line-strong);border-radius:14px;overflow:hidden;background:var(--bg-2);
+    box-shadow:0 24px 60px rgba(0,0,0,.5),0 3px 10px rgba(0,0,0,.4);display:block;width:100%}
+  .shot img{display:block;width:100%;height:auto}
+  figcaption{margin-top:11px;font-size:13.5px;color:var(--dim);text-align:center;line-height:1.5}
+  figcaption b{color:var(--muted);font-weight:600}
+  .glow{position:relative}
+  .glow::before{content:"";position:absolute;inset:-1px -1px auto -1px;height:2px;border-radius:14px 14px 0 0;
+    background:linear-gradient(90deg,transparent,var(--gold-line),transparent)}
+
+  /* steps */
+  .steps{list-style:none;margin:24px 0 6px;padding:0;display:flex;flex-direction:column;gap:2px}
+  .steps li{display:grid;grid-template-columns:30px 1fr;gap:16px;padding:16px 0;border-top:1px solid var(--line)}
+  .steps li:last-child{border-bottom:1px solid var(--line)}
+  .steps .n{font-family:var(--mono);font-size:13px;color:var(--gold);padding-top:2px;font-variant-numeric:tabular-nums}
+  .steps h3{margin:0 0 3px}
+  .steps p{margin:0;font-size:15.5px}
+
+  /* feature callout band (pins/look) */
+  .feature{margin-top:64px;border:1px solid var(--gold-line);border-radius:18px;overflow:hidden;
+    background:linear-gradient(180deg,rgba(212,160,74,.06),transparent 40%),var(--panel)}
+  .feature .body{padding:30px 30px 6px}
+  .feature .tag{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--bg);background:var(--gold);
+    padding:5px 11px;border-radius:99px;margin-bottom:16px}
+  .feature figure{margin:8px 0 0}
+  .feature .shot{border-radius:0;border-left:0;border-right:0;border-bottom:0;box-shadow:none}
+
+  /* tip */
+  .tip{border-left:2px solid var(--gold);background:var(--gold-soft);border-radius:0 10px 10px 0;
+    padding:14px 18px;margin:22px 0;font-size:15.5px;color:rgba(246,243,237,.78)}
+  .tip b{color:var(--gold-bright)}
+
+  /* two-up */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:26px 0 8px}
+  .duo figure{margin:0}
+  @media(max-width:640px){.duo{grid-template-columns:1fr}}
+
+  /* keycaps + pills */
+  kbd{font-family:var(--mono);font-size:.8em;background:var(--panel-2);border:1px solid var(--line-strong);
+    border-bottom-width:2px;border-radius:5px;padding:.1em .45em;color:var(--ink)}
+
+  footer{max-width:var(--measure);margin:0 auto;padding:40px 24px 60px;border-top:1px solid var(--line);
+    color:var(--dim);font-size:13.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  footer .spacer{flex:1}
+
+  @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+
+<header>
+  <span class="mark"></span>
+  <span class="brand">Capsule</span>
+  <span class="sep">/</span>
+  <span class="where">Help</span>
+  <span class="spacer"></span>
+  <a class="home" href="https://www.yg3.ai" target="_blank" rel="noopener">A YG3 product ↗</a>
+</header>
+
+<main>
+  <div class="hero">
+    <p class="eyebrow">Help · Getting started</p>
+    <h1>Build a game.<br>Drag it into place<span class="dot">.</span></h1>
+    <p class="lede sub">Capsule is a thin visual editor for <b>three.js</b> games that stay plain, readable
+      text — no build step, no bundler, nothing to compile. You describe the game to an AI, and Capsule
+      gives you the one thing the AI can't do: reach into the 3D scene and put things exactly where they go.</p>
+    <figure class="fig wide">
+      <span class="shot glow"><img src="media/01-welcome.png" alt="The Capsule welcome screen"></span>
+      <figcaption>The welcome screen — start a new game, browse your Capsule folder, or open a moodboard.</figcaption>
+    </figure>
+  </div>
+
+  <section>
+    <p class="eyebrow">The idea</p>
+    <h2>Why there's barely an editor</h2>
+    <p>An AI writes the HTML, the game loop, the shaders — all of it — top to bottom, no problem. The one
+      thing it's genuinely bad at is <strong>placing and moving things in 3D space</strong>. "Put the crate
+      two meters left of the door, rotated 30°" is slow and error-prone in code. Dragging it there takes a second.</p>
+    <p><strong>That gap is the whole product.</strong> Capsule is the viewport that lets you grab an object and
+      move it; everything else stays plain text the model owns. There's no asset pipeline, no scene format to
+      learn, no bloat — just readable files an agent can open and change, and a game running one second later.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">The format</p>
+    <h2>What a capsule is</h2>
+    <p>A capsule is a folder of plain web files. That's the moat: any model can read the whole game as text
+      and understand it.</p>
+<pre style="font-family:var(--mono);font-size:13.5px;line-height:1.7;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;overflow-x:auto;margin:6px 0 18px">index.html            entry — HTML, CSS, and the game's JS
+capsule.scenes.json   object placements the editor writes
+assets/               models, textures, audio — drop them in
+mosaic/               your visual moodboard (never ships in the game)
+CLAUDE.md / AGENTS.md  context for your AI of choice</pre>
+    <p>Edit a file, save, the preview reloads. If you're reaching for webpack, TypeScript, or a
+      <code>package.json</code> of runtime deps — stop. That breaks the thing that makes it fast.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">Workflow</p>
+    <h2>Start a game</h2>
+    <ol class="steps">
+      <li><span class="n">01</span><div><h3>New project</h3><p>Pick 2D or 3D, PC or mobile, and name it. Capsule scaffolds a
+        tiny starter and drops it in your <code>~/Capsule</code> folder.</p></div></li>
+      <li><span class="n">02</span><div><h3>Describe it to the AI</h3><p>Open the AI box (<kbd>⌘J</kbd>) and tell it what
+        you're making. It writes the code and places things live in the scene through Capsule.</p></div></li>
+      <li><span class="n">03</span><div><h3>Drag to refine</h3><p>Grab anything the AI placed and move, rotate, or scale it
+        by hand. Hit <em class="k">▶ Play</em> to run the real game at any moment.</p></div></li>
+    </ol>
+    <figure class="fig wide">
+      <span class="shot"><img src="media/05-new-project.png" alt="New project — choose 2D or 3D, PC or Mobile"></span>
+      <figcaption>New project — <b>2D or 3D</b>, <b>PC or Mobile</b>. Mobile opens at a phone viewport and exports to iOS / Android.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <p class="eyebrow">The editor</p>
+    <h2>Move things exactly where they go</h2>
+    <p>Anything the game tags as editable shows up in the panel, grouped by type. Click it to fly the camera
+      in, then drag the gizmo — <kbd>W</kbd> move, <kbd>E</kbd> rotate, <kbd>R</kbd> scale — or type exact
+      numbers in the inspector. <em class="k">Save</em> writes it all to a readable <code>capsule.scenes.json</code>.</p>
+    <div class="duo">
+      <figure><span class="shot"><img src="media/drag.gif" alt="Dragging an object with the move gizmo"></span></figure>
+      <figure><span class="shot"><img src="media/06-gizmo.png" alt="The transform gizmo and inspector"></span></figure>
+    </div>
+    <figcaption style="text-align:center;margin:2px 0 0">Grab the gizmo to place an object — the inspector mirrors the exact position, rotation, and scale.</figcaption>
+    <p style="margin-top:22px">There's more under the same roof: <strong>mesh mode</strong> (<kbd>▦</kbd>) to edit and
+      retexture any wall or floor, <strong>duplicate</strong> (<kbd>D</kbd>) that keeps an object's collision and
+      attributes, and <strong>scenes &amp; states</strong> so one place can have day/night or floor-by-floor variants.</p>
+    <div class="tip">Assets carry their own attributes. Add one with <code>capsule.add(obj, {collide, light, sound, behavior})</code>
+      and its collision box, light, and sound <b>move with it</b> when you drag — no invisible walls left behind.</div>
+  </section>
+
+  <div class="feature wide">
+    <div class="body">
+      <span class="tag">◎ The one that changes everything</span>
+      <h2>Point the AI at what you mean</h2>
+      <p style="max-width:38rem">"Move that thing over there — no, <em class="k">that</em> one." Aim the camera, or drop
+        numbered <strong>reference pins</strong> on any surface, and ask the AI to <strong>look</strong>. It gets a
+        screenshot of your exact view <em>plus</em> what you centered and each pin's real coordinates — so
+        <em class="k">"extend the upper floor between these two pins"</em> just works.</p>
+    </div>
+    <figure>
+      <span class="shot"><img src="media/03-pins.png" alt="Numbered reference pins dropped around a selected object in the editor"></span>
+    </figure>
+    <div class="body" style="padding-top:22px">
+      <p style="max-width:38rem">Click a pin to remove it, <kbd>⇧</kbd>-click <kbd>◎</kbd> to clear them all. It's the
+        difference between describing a spot in a paragraph and just <strong>pointing at it</strong>. This is how you
+        brief an AI on a 3D scene.</p>
+    </div>
+  </div>
+
+  <section>
+    <p class="eyebrow">Visual direction</p>
+    <h2>Mosaic — brief the AI with pictures</h2>
+    <p>Models design far better from images than from prose. <strong>Mosaic</strong> is a per-project moodboard:
+      drag concept art, screenshots, and storyboards onto a freeform canvas, sort them into boards, and hit
+      <em class="k">✦ Reference in chat</em>. It types <em class="k">"look at the references in ./mosaic/characters/…"</em>
+      into the AI box so you just finish the sentence — <em>"…make a sprite like this one."</em></p>
+    <figure class="fig wide">
+      <span class="shot"><img src="media/04-mosaic.png" alt="A Mosaic moodboard of enemy concept art with note cards"></span>
+      <figcaption>A moodboard of enemy designs and direction notes. It's all plain files in <code>mosaic/</code> — and it never ships inside the exported game.</figcaption>
+    </figure>
+    <p>Open Mosaic with no project to start <strong>design-first</strong>: collect references, then spin up an
+      empty game and build straight from them.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">Your model, your keys</p>
+    <h2>Bring your own AI</h2>
+    <p>There's almost nothing to "integrate" — the game is already readable text. Point the AI box at whatever
+      you want: <strong>Claude Code</strong>, Codex, aider, or a local model. It runs in the project folder with your
+      real shell, so it uses each tool's own auth. Through Capsule's editor tools it can <em>see</em> the scene
+      (<code>screenshot</code>, <code>look</code>) and place things (<code>select</code>, <code>move</code>) — the same
+      handles you use.</p>
+    <figure class="fig wide">
+      <span class="shot glow"><img src="media/07-ai-box.png" alt="The AI box docked beside the editor, using look to act on reference pins"></span>
+      <figcaption>The AI box docks beside the viewport. Drop pins, say <b>&ldquo;look&rdquo;</b>, and it acts on exactly what you pointed at &mdash; then writes the change back to plain data.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <p class="eyebrow">Ship it</p>
+    <h2>Export to a real app</h2>
+    <p>When it's ready, wrap the capsule into a native executable for <strong>macOS, Windows, and Linux</strong>,
+      or a mobile project for iOS / Android. The game inside stays the same readable files — the wrapper is only a
+      shell. Your moodboard and editor tooling are left out automatically.</p>
+    <div class="tip">Everything the editor writes is plain, readable data you can commit alongside the game. Nothing
+      opaque, nothing to reverse-engineer later.</div>
+  </section>
+</main>
+
+<footer>
+  <span class="mark" style="width:16px;height:16px"></span>
+  <span>Capsule</span>
+  <span class="spacer"></span>
+  <span>A <a href="https://www.yg3.ai" target="_blank" rel="noopener">YG3</a> product · free &amp; open source</span>
+</footer>
+</body>
+</html>

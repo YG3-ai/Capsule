@@ -1,85 +1,129 @@
-# Capsule — help & demo
+# Capsule — Help & Getting Started
 
-Capsule is a thin visual editor for **three.js games that stay plain, readable text** (HTML +
-CSS + JavaScript, no build step). You describe the game to an AI, drag objects where they go,
-play it, and export to desktop or mobile — all in one app.
+**Build a game. Drag it into place.**
 
-![The Capsule editor](docs/img/editor.png)
+Capsule is a thin visual editor for **three.js** games that stay plain, readable text — no build
+step, no bundler, nothing to compile. You describe the game to an AI, and Capsule gives you the one
+thing the AI can't do: reach into the 3D scene and put things exactly where they go.
 
-*The editor: drag the gizmo to move/rotate/scale, pick a Scene/Layer, undo/redo, the object
-panel groups everything by type, the inspector shows exact numbers, and ▶ Play runs the game.*
+![The Capsule editor with the AI box docked alongside](docs/media/07-ai-box.png)
+
+> There's also a hosted version of this guide with the same visuals. This page is the source of truth.
 
 ---
 
-## Install & run
+## Why there's barely an editor
 
-**From source (any platform):**
-```bash
-cd app
-npm install
-npx @electron/rebuild -w node-pty   # first time: build the terminal module for Electron
-npm start
+An AI writes the HTML, the game loop, the shaders — all of it — top to bottom, no problem. The one
+thing it's genuinely bad at is **placing and moving things in 3D space**. *"Put the crate two meters
+left of the door, rotated 30°"* is slow and error-prone in code. Dragging it there takes a second.
+
+**That gap is the whole product.** Capsule is the viewport that lets you grab an object and move it;
+everything else stays plain text the model owns. No asset pipeline, no scene format to learn, no
+bloat — just readable files an agent can open and change, and a game running one second later.
+
+---
+
+## What a capsule is
+
+A capsule is a folder of plain web files. That's the moat: any model can read the whole game as text
+and understand it.
+
+```
+index.html            entry — HTML, CSS, and the game's JS
+capsule.scenes.json   object placements the editor writes
+assets/               models, textures, audio — drop them in
+mosaic/               your visual moodboard (never ships in the game)
+CLAUDE.md / AGENTS.md  context for your AI of choice
 ```
 
-**Or the packaged app (macOS):** open `app/dist/Capsule-<version>.dmg`, drag to Applications,
-run. It's unsigned, so the first launch: **right-click the app → Open**.
+Edit a file, save, the preview reloads. If you're reaching for webpack, TypeScript, or a
+`package.json` of runtime deps — stop. That breaks the thing that makes it fast.
 
 ---
 
-## Make a simple game (the 60-second tour)
+## Start a game
 
-### 1. New project
+![New project — choose 2D or 3D, PC or Mobile](docs/media/05-new-project.png)
 
-On launch you get the welcome screen. **+ New project** scaffolds a blank-but-working capsule
-(a minimal three.js scene + the editor/AI hook already wired) and opens it. **Open project**
-loads an existing capsule and auto-detects its objects.
+1. **New project.** Pick 2D or 3D, PC or mobile, and name it. Capsule scaffolds a tiny starter and
+   drops it in your `~/Capsule` folder.
+2. **Describe it to the AI.** Open the AI box (`⌘J`) and tell it what you're making. It writes the
+   code and places things live in the scene through Capsule.
+3. **Drag to refine.** Grab anything the AI placed and move, rotate, or scale it by hand. Hit
+   **▶ Play** to run the real game at any moment.
 
-### 2. Describe the game to the AI
+---
 
-![The AI box](docs/img/aibox.png)
+## Move things exactly where they go
 
-Press **⌘J** to open the **AI box** — a terminal running your agent of choice (`claude` by
-default; `codex`, `aider`, or any CLI via *Set AI Agent…*). It runs **in your project** and is
-wired to the editor, so it can both write code *and* place objects:
+Anything the game tags as editable shows up in the panel, grouped by type. Click it to fly the
+camera in, then drag the gizmo — `W` move, `E` rotate, `R` scale — or type exact numbers in the
+inspector. **Save** (`⌘S`) writes it all to a readable `capsule.scenes.json`.
 
-> *"make a simple 2D space shooter"* … *"move the player a little lower"*
+![Dragging an object with the move gizmo; the inspector mirrors the transform](docs/media/drag.gif)
 
-The agent edits the game files and can `select` / `move` objects in the live viewport (via
-Capsule's MCP server). A non-coder can stay entirely in this loop and never open a file.
+There's more under the same roof:
 
-### 3. Drag to refine
+- **Mesh mode** (`▦`) — edit and retexture any wall or floor, not just tagged props.
+- **Duplicate** (`D`) — copies keep their collision and attributes.
+- **Scenes & states** — one place can have day/night or floor-by-floor variants; edit `Base` to
+  affect every state, or a state to save just its differences.
 
-![The editor](docs/img/editor.png)
+> **Assets carry their own attributes.** Add one with
+> `capsule.add(obj, { collide, light, sound, behavior })` and its collision box, light, and sound
+> **move with it** when you drag — no invisible walls left behind.
 
-When you want precision, grab it yourself. Click an object → drag the **gizmo**:
+---
 
-- **W** move · **E** rotate · **R** scale
-- Type exact values in the **inspector** (bottom-right)
-- **⌘Z / ⌘⇧Z** undo / redo
-- The **object panel** lists everything editable, grouped by type, with a **⚠ untagged** section
-  for assets that still need a tag
+## ◎ Point the AI at what you mean
 
-**Save** writes placements to `capsule.scenes.json` — plain readable data, never a binary blob.
+*"Move that thing over there — no, **that** one."* Aim the camera, or drop numbered **reference pins**
+on any surface, and ask the AI to **look**. It gets a screenshot of your exact view *plus* what you
+centered and each pin's real coordinates — so *"extend the upper floor between these two pins"* just
+works.
 
-### 4. Play it
+![Numbered reference pins dropped around a selected object](docs/media/03-pins.png)
 
-![A running game](docs/img/game.png)
+Turn on pin mode with `◎`, click a surface to drop a numbered crosshair, click a pin to remove it,
+and `⇧`-click `◎` to clear them all. It's the difference between describing a spot in a paragraph and
+just **pointing at it** — this is how you brief an AI on a 3D scene.
 
-Hit **▶ Play** to run the real game (your saved placements apply). A **✎ Edit** button appears
-top-right to jump back to the editor (or **⌘E**).
+---
 
-### 5. Add your own assets
+## Mosaic — brief the AI with pictures
 
-**Drag a `.glb` / `.gltf` onto the editor** — it's saved into `assets/models/`, dropped into the
-scene, sized, grounded, and made editable. (Or just ask the AI box to add one.)
+Models design far better from images than from prose. **Mosaic** is a per-project moodboard: drag
+concept art, screenshots, and storyboards onto a freeform canvas, sort them into boards, and hit
+**✦ Reference in chat**. It types *"look at the references in ./mosaic/characters/…"* into the AI box
+so you just finish the sentence — *"…make a sprite like this one."*
 
-### 6. Export
+![A Mosaic moodboard of enemy concept art with direction notes](docs/media/04-mosaic.png)
 
-- **Desktop:** `./export/build.sh mac` (or `win` / `linux`) → a native app. three.js is vendored
-  locally so it runs fully offline.
-- **Mobile:** `./mobile-export/build.sh ios|android` → a Capacitor project you open in Xcode /
-  Android Studio. (Games also just *play* in any mobile browser.)
-- Use the **Viewport** menu (Desktop / Phone / Tablet) to design for the target screen.
+Open Mosaic with no project (`⌘⇧M`) to start **design-first**: collect references, then spin up an
+empty game and build straight from them. It's all plain files in `mosaic/` — and it never ships
+inside the exported game.
+
+---
+
+## Bring your own AI
+
+There's almost nothing to "integrate" — the game is already readable text. Point the AI box at
+whatever you want: **Claude Code**, Codex, aider, or a local model. It runs in the project folder with
+your real shell, so it uses each tool's own auth. Through Capsule's editor tools it can *see* the
+scene (`screenshot`, `look`) and place things (`select`, `move`) — the same handles you use.
+
+- **⌘J** opens the AI box; **Set AI Agent…** picks the CLI (`claude`, `claude --continue` to resume,
+  `codex`, `aider`, or custom).
+
+---
+
+## Ship it
+
+When it's ready, wrap the capsule into a native executable for **macOS, Windows, and Linux**
+(`./export/build.sh [dir|mac|win|linux|all]`), or a mobile project for iOS / Android. The game inside
+stays the same readable files — the wrapper is only a shell. Your moodboard and editor tooling are
+left out automatically.
 
 ---
 
@@ -87,60 +131,29 @@ scene, sized, grounded, and made editable. (Or just ask the AI box to add one.)
 
 | | |
 |---|---|
-| **Scene / Layer** | A *scene* is a place; a *layer* is a state of it (e.g. `Base`, or a loop). Edit `Base` to affect every state; edit a state to save just its differences. |
-| **Object panel** | Everything editable, grouped by type (`entity`/`prop`/`pickup`/`plant`/`decal`/…). The **⚠ untagged** list surfaces assets that aren't editable yet. |
+| **Scene / Layer** | A *scene* is a place; a *layer* is a state of it (`Base`, or e.g. a loop). Edit `Base` to affect every state; edit a state to save just its differences. |
+| **Object panel** | Everything editable, grouped by type (`entity` / `prop` / `pickup` / `plant` / `decal` / `light` / …). The **⚠ untagged** list surfaces assets that aren't editable yet. |
 | **Gizmo** | `W` move · `E` rotate · `R` scale · `Esc` deselect |
 | **Inspector** | Type exact position / rotation° / scale |
-| **Duplicate / Delete** | Copy (`D`) or remove the selected asset from its panel row — a copy keeps its collision and attributes |
-| **Reference pins** | `◎` — drop numbered crosshairs on surfaces to point the AI at exact spots. Click a pin to remove · ⇧-click `◎` to clear all · `Esc` exits |
+| **Duplicate / Delete** | Copy (`D`) or remove the selected asset — a copy keeps its collision and attributes |
+| **Reference pins** | `◎` — drop numbered crosshairs to point the AI at exact spots. Click a pin to remove · ⇧-click `◎` to clear all · `Esc` exits |
+| **Mesh mode** | `▦` — edit / recolor / retexture any wall, floor, or structural mesh |
 | **Save** | `⌘S` → `capsule.scenes.json` (saved straight to disk in the app) |
-| **Mosaic** | `❏` or `⌘⇧M` — a visual moodboard to brief the AI (see below) |
-| **Play / Edit** | ▶ Play runs the game · ✎ Edit (or ⌘E) returns |
+| **Mosaic** | `❏` or `⌘⇧M` — the visual moodboard |
+| **Play / Edit** | ▶ Play runs the game · ✎ Edit (or `⌘E`) returns |
 
-## The AI box
+For the code side of making your own game editable (the hook, tagging, `capsule.add`), see
+**[GUIDE.md](GUIDE.md)** and **[SCENES.md](SCENES.md)**.
 
-- **⌘J** opens it; **Set AI Agent…** picks the CLI (`claude`, `claude --continue` to resume your
-  last conversation, `codex`, `aider`, or custom).
-- It runs in the project dir with your real shell environment, so it uses each tool's own auth.
-- It reaches the editor through Capsule's **MCP server** (`list_editables`, `select`, `move`,
-  `screenshot`, `look`, …), so the agent can *see* the scene and place things.
-- **Point at things with `look`.** Aim the camera (or drop `◎` reference pins) and say *"see what
-  I'm looking at"* / *"use what I pinned"* — `look` returns a screenshot of your current view plus
-  the object you've centred and each pin's exact spot, so the AI acts on what you're indicating.
-  When it's done, *"clear the pins"* (the `clear_markers` tool) or ⇧-click `◎`.
-
-## Mosaic — brief the AI with pictures
-
-AI designs better from images than from text. **Mosaic** (`❏` / `⌘⇧M`) is a per-project visual
-moodboard: drag concept art, screenshots, and storyboards onto a freeform canvas, sort them into
-boards, and hit **✦ Reference in chat** — it types *"Take a look at the reference images in
-`./mosaic/<board>/` …"* into the AI box so you can finish with *"…make the menu look like this."*
-Open it with no project to start **design-first** — collect references, then **＋ New empty game**
-(2D/3D · PC/Mobile) and build from them. References are plain files in `mosaic/`; they never ship
-in the exported game.
-
-## Making your game editable (for the code-curious)
-
-An object becomes editable just by carrying a `userData.capsuleId`. The scaffold tags a starter
-cube for you; the standard way to add more is `capsule.add`, which tags the object **and** wires
-its attributes (collision, light, sound, behavior) so they move with it:
-
-```js
-capsule.add(crate, { type: 'prop', collide: { w: 0.5, d: 0.5 }, light: { intensity: 2 } });
-// adapting an existing game? tag at the spawn site instead:
-capsule.tag(obj, { type: 'prop' });                 // auto-ids from position
-capsule.registerEditable(boss, 'boss', 'entity');
-```
-
-Full conventions are in [GUIDE.md](GUIDE.md) and [SCENES.md](SCENES.md).
+---
 
 ## Troubleshooting
 
 - **"claude exited" in the AI box** — make sure that agent is installed and on your PATH (the box
   runs it through a login shell, so whatever works in your terminal works here).
-- **VS Code didn't open** — install the `code` CLI: VS Code → `⌘⇧P` → *Shell Command: Install
-  'code' command in PATH*.
-- **Something isn't editable** — it's missing a `capsuleId`; check the **⚠ untagged** list and tag
-  it (or ask the AI box to).
-- **Keep your project out of iCloud-synced folders** (`~/Documents`/`~/Desktop`) — heavy build
-  output churns the sync and can cause conflicts. Use `~/dev` or similar; rely on git.
+- **VS Code didn't open** — install the `code` CLI: VS Code → `⌘⇧P` → *Shell Command: Install 'code'
+  command in PATH*.
+- **Something isn't editable** — it's missing a `capsuleId`; check the **⚠ untagged** list and tag it
+  (or ask the AI box to).
+- **Keep your project out of iCloud-synced folders** (`~/Documents` / `~/Desktop`) — heavy build
+  output churns the sync and can cause conflicts. Use `~/Capsule` or `~/dev`; rely on git.

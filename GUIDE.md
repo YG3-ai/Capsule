@@ -268,6 +268,8 @@ saves only its differences. See [SCENES.md](SCENES.md) for the layering model an
 5. **Save** writes `capsule.scenes.json` — full transforms for Base, minimal deltas for a state.
 6. Reload without `?edit`: the game applies `base ⊕ state` on load and reflects your edits.
 
+![Dragging a tagged object with the move gizmo — the inspector mirrors its exact transform](docs/media/drag.gif)
+
 You can also **duplicate** or **delete** a selected asset from its row in the panel (or `D` to
 duplicate). Duplicating a code-built prop is recorded as a readable `clone` entry in
 `capsule.scenes.json` and reproduced by cloning the live source on load — so the copy survives a
@@ -282,6 +284,8 @@ nearest editable**. So *"extend the upper floor between these two pins"* just wo
 remove it, ⇧-click `◎` (or the `clear_markers` tool) to clear all, `Esc` to exit. Pins are
 annotations only — they never enter the editable list or `capsule.scenes.json`.
 
+![Reference pins placed around a selected object; the AI box reads them via `look`](docs/media/07-ai-box.png)
+
 ---
 
 ## Mosaic — design with reference images
@@ -289,6 +293,8 @@ annotations only — they never enter the editable list or `capsule.scenes.json`
 Models design far better from pictures than from prose. **Mosaic** is a per-project visual
 moodboard for exactly that: a freeform canvas where you drop concept art, screenshots, and
 storyboards, group them into boards, and point the AI at them.
+
+![A Mosaic moodboard of enemy concept art with direction notes](docs/media/04-mosaic.png)
 
 - **Open it** from the editor (the `❏` button), the play bar, the welcome screen, or `⌘⇧M`.
 - **Add references** by dragging image files straight onto the canvas (they're copied into
