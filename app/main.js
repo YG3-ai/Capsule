@@ -10,6 +10,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const pty = require('node-pty');
 const { startMcp, MCP_PORT } = require('./mcp.js');
 
 let win = null;
@@ -66,6 +67,9 @@ const MIME = {
 const mimeFor = (p) => MIME[path.extname(p).toLowerCase()] || 'application/octet-stream';
 
 function startServer(root) {
+  // Normalize to native separators so the "inside root?" guard below works on
+  // Windows (a project path passed with '/' would otherwise fail path.sep checks).
+  root = path.resolve(root);
   return new Promise((resolve, reject) => {
     const s = http.createServer((req, res) => {
       let rel;
@@ -426,6 +430,40 @@ ipcMain.handle('capsule:revealProjects', () => shell.openPath(ensureProjectsRoot
 ipcMain.handle('capsule:viewport', (_e, { w, h }) => setViewport(w, h));
 ipcMain.handle('capsule:export', (_e, { target, mobile }) => exportGame(target, mobile));
 ipcMain.handle('capsule:toggleAI', () => toggleAI());
+
+// AI box terminal: the PTY runs HERE in the main process and streams to xterm in
+// the renderer over IPC. A renderer can't create the Node Worker that node-pty's
+// Windows ConPTY backend needs ("V8 platform ... does not support creating
+// Workers"), so spawning the pty in the renderer fails on Windows. Main can.
+const ptys = new Map();   // webContents -> pty process
+ipcMain.handle('pty:spawn', (e, { dir, cmd, cols, rows } = {}) => {
+  const wc = e.sender;
+  const prev = ptys.get(wc); if (prev) { try { prev.kill(); } catch {} }
+  const isWin = process.platform === 'win32';
+  // Run inside the native interactive shell so the agent inherits the user's full
+  // PATH/env/auth. Windows has no /bin/zsh or $SHELL — use its own shell.
+  const shell = isWin ? (process.env.COMSPEC || 'cmd.exe') : (process.env.SHELL || '/bin/zsh');
+  const args = isWin ? [] : ['-il'];
+  let proc;
+  try {
+    proc = pty.spawn(shell, args, {
+      name: 'xterm-color', cols: cols || 80, rows: rows || 24,
+      cwd: dir || process.env.HOME || process.env.USERPROFILE, env: process.env,
+    });
+  } catch (err) {
+    console.error('[capsule] pty:spawn FAILED:', err);
+    throw err;
+  }
+  ptys.set(wc, proc);
+  proc.onData((d) => { if (!wc.isDestroyed()) wc.send('pty:data', d); });
+  proc.onExit(({ exitCode }) => { if (!wc.isDestroyed()) wc.send('pty:exit', exitCode); ptys.delete(wc); });
+  // Launch the agent once the shell has initialised the user's environment.
+  if (cmd) setTimeout(() => { try { proc.write(cmd + '\r'); } catch {} }, isWin ? 500 : 300);
+  wc.once('destroyed', () => { const p = ptys.get(wc); if (p) { try { p.kill(); } catch {} } ptys.delete(wc); });
+  return true;
+});
+ipcMain.on('pty:input', (e, d) => { const p = ptys.get(e.sender); if (p) { try { p.write(d); } catch {} } });
+ipcMain.on('pty:resize', (e, { cols, rows } = {}) => { const p = ptys.get(e.sender); if (p) { try { p.resize(cols || 80, rows || 24); } catch {} } });
 // "+ Add ▸ Asset" — pick a file and copy it into the project's assets/ (like a drag-drop).
 ipcMain.handle('capsule:importAsset', async () => {
   if (!projectDir) return { ok: false, error: 'no project open' };
