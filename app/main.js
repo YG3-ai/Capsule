@@ -630,7 +630,29 @@ function createWindow() {
   // so inject a visible way back to the editor.
   win.webContents.on('did-finish-load', () => {
     const url = win.webContents.getURL();
-    if (!/^http:\/\/127\.0\.0\.1/.test(url) || /[?&]edit\b/.test(url)) return;
+    const isProject = /^http:\/\/127\.0\.0\.1/.test(url);
+    const isEdit = /[?&]edit\b/.test(url);
+    // Edit mode: if the page didn't bring its own editor (a three.js capsule
+    // imports capsule-edit.js and sets window.capsule.editor), inject the DOM
+    // overlay so reference pins + LOOK work on ANY html/canvas game — including
+    // imported ones — with no per-game code. Poll briefly first so a real editor
+    // that's still loading wins; three.js capsules are therefore never touched.
+    if (isProject && isEdit) {
+      let tries = 0;
+      const check = async () => {
+        try {
+          if (await win.webContents.executeJavaScript('!!(window.capsule && window.capsule.editor)')) return;
+          if (++tries >= 4) {
+            const dom = fs.readFileSync(path.join(__dirname, 'template', 'capsule-edit-dom.js'), 'utf8');
+            return void win.webContents.executeJavaScript(dom);
+          }
+          setTimeout(check, 400);
+        } catch { /* navigated away */ }
+      };
+      setTimeout(check, 400);
+      return;
+    }
+    if (!isProject) return;
     win.webContents.executeJavaScript(`(() => {
       if (document.getElementById('__cap_bar')) return;
       const host = window.capsuleHost || {};
