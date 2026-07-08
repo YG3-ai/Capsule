@@ -66,6 +66,28 @@ beyond the built-in three.js templates:
   the game lazy-load its edit overlay only when `?edit` is present so it never
   ships in production.
 
+## Exporting & sharing a game (File → Export)
+
+- **Single-file HTML — text to a friend** (easiest). Inlines the whole game
+  (JS, CSS, images) into one self-contained `.html` with no external requests.
+  You then text / AirDrop / email that one file — no hosting, no accounts, no
+  app store. On a phone: **Save to Files → open it → Add to Home Screen**, and it
+  plays offline. Pure Node, so it works on Windows. Best for already-bundled
+  games (a Vite `dist/` is one JS + one CSS and inlines cleanly); for multi-module
+  source games it inlines what it can and warns about anything left external.
+- **Desktop App** → an Electron `.exe` / `.dmg` / AppImage (via `export/build.sh`).
+- **Mobile app project (iOS + Android)** → a Capacitor project you finish in
+  Xcode / Android Studio (via `mobile-export/build.sh`).
+
+**iOS reality check:** you cannot sideload an app onto a stock iPhone from a file
+— Apple only allows the App Store, TestFlight, or ad-hoc device provisioning, all
+of which need a paid Apple Developer account, and building a native iOS app at all
+needs a **Mac + Xcode**. So on Windows, the realistic ways to get a game onto
+friends' iPhones are the **single-file HTML** above, or a hosted web link. The
+build scripts are framework-agnostic (they skip the three.js vendor step when the
+game has no three CDN import) and use portable `sed` so they run on Windows/Linux,
+not just macOS.
+
 ## The MCP server
 
 The editor is exposed to an AI over MCP at `http://127.0.0.1:39127/mcp`

@@ -311,6 +311,104 @@ function exportGame(target, mobile = false) {
   w.loadFile('terminal.html', { query: { dir: repo, cmd } });
 }
 
+// ── Single-file HTML export ("text a file to a friend") ──────────────────────
+// Inline a project's index.html into ONE self-contained .html. Pure Node (works
+// on Windows, no bash/toolchain), so it's the friction-free way to share a game:
+// no hosting, no app store, no Mac. It opens straight from Files/Safari on a
+// phone. Ideal for already-bundled games (a Vite dist/ is one JS + one CSS);
+// for multi-module source games it inlines what it can and warns about the rest.
+const SF_MIME = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon',
+  '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf',
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+};
+function sfReadLocal(dir, ref) {
+  if (!ref || /^(https?:|data:|blob:|#|mailto:)/i.test(ref)) return null;
+  const clean = ref.replace(/[?#].*$/, '').replace(/^\.?\//, '');
+  const fp = path.resolve(dir, clean);
+  if (fp !== dir && !fp.startsWith(dir + path.sep)) return null; // stay inside the project
+  try { return fs.readFileSync(fp); } catch { return null; }
+}
+function sfDataUri(dir, ref) {
+  const buf = sfReadLocal(dir, ref);
+  if (!buf) return null;
+  const ext = path.extname(ref.replace(/[?#].*$/, '')).toLowerCase();
+  return `data:${SF_MIME[ext] || 'application/octet-stream'};base64,${buf.toString('base64')}`;
+}
+function sfInlineCssUrls(dir, css) {
+  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (m, _q, ref) => {
+    const u = sfDataUri(dir, ref);
+    return u ? `url(${u})` : m;
+  });
+}
+function buildSingleFile(dir) {
+  dir = path.resolve(dir);
+  let html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+  const warnings = [];
+  // modulepreload just prefetches the JS we're about to inline — drop it.
+  html = html.replace(/<link\b[^>]*\brel=["']modulepreload["'][^>]*>\s*/gi, '');
+  // <link rel="stylesheet"> → <style> (with its url() assets inlined too)
+  html = html.replace(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi, (tag) => {
+    const href = (tag.match(/href=["']([^"']+)["']/i) || [])[1];
+    const buf = sfReadLocal(dir, href);
+    return buf ? `<style>\n${sfInlineCssUrls(dir, buf.toString('utf8'))}\n</style>` : tag;
+  });
+  // icon / apple-touch-icon links → data URI
+  html = html.replace(/<link\b[^>]*\brel=["'][^"']*icon[^"']*["'][^>]*>/gi, (tag) => {
+    const href = (tag.match(/href=["']([^"']+)["']/i) || [])[1];
+    const u = sfDataUri(dir, href);
+    return u ? tag.replace(href, u) : tag;
+  });
+  // <script src> → inline (keep type="module" etc.; drop crossorigin + src)
+  html = html.replace(/<script\b([^>]*)\bsrc=["']([^"']+)["']([^>]*)><\/script>/gi, (tag, pre, src, post) => {
+    const buf = sfReadLocal(dir, src);
+    if (!buf) return tag;
+    const attrs = `${pre} ${post}`.replace(/\bcrossorigin(=["'][^"']*["'])?/gi, '')
+      .replace(/\ssrc=["'][^"']*["']/i, '').replace(/\s+/g, ' ').trim();
+    let js = buf.toString('utf8');
+    if (/\bfrom\s*["']\.{0,2}\//.test(js) || /\bimport\s*\(\s*["']\.{0,2}\//.test(js))
+      warnings.push(`${src} still imports other local modules — a bundled build (e.g. Vite dist/) inlines cleanly; this one may not run standalone.`);
+    js = js.replace(/<\/script>/gi, '<\\/script>'); // don't let the JS close the tag early
+    return `<script${attrs ? ' ' + attrs : ''}>\n${js}\n</script>`;
+  });
+  // <img src> → data URI
+  html = html.replace(/<img\b[^>]*?\ssrc=["']([^"']+)["'][^>]*>/gi, (tag, src) => {
+    const u = sfDataUri(dir, src);
+    return u ? tag.replace(src, u) : tag;
+  });
+  const external = [...new Set([...html.matchAll(/\b(?:src|href)\s*=\s*["'](https?:\/\/[^"']+)["']/gi)].map((m) => m[1]))];
+  return { html, warnings, external };
+}
+async function exportSingleFile() {
+  if (!projectDir) { dialog.showMessageBox(win, { message: 'Open a project first.' }); return; }
+  if (!fs.existsSync(path.join(projectDir, 'index.html'))) {
+    dialog.showMessageBox(win, { type: 'error', message: 'No index.html in this project.' }); return;
+  }
+  let result;
+  try { result = buildSingleFile(projectDir); }
+  catch (e) { dialog.showMessageBox(win, { type: 'error', message: 'Could not build the single file', detail: String(e) }); return; }
+
+  const name = (path.basename(projectDir).replace(/[^a-z0-9_-]+/gi, '-') || 'game');
+  const save = await dialog.showSaveDialog(win, {
+    title: 'Save single-file game',
+    defaultPath: path.join(app.getPath('desktop'), `${name}.html`),
+    filters: [{ name: 'HTML', extensions: ['html'] }],
+  });
+  if (save.canceled || !save.filePath) return;
+  fs.writeFileSync(save.filePath, result.html);
+
+  const kb = Math.round(Buffer.byteLength(result.html) / 1024);
+  let detail = `Saved ${kb} KB → ${save.filePath}\n\nText / AirDrop this one file. On iPhone: Save to Files → open it → Add to Home Screen.`;
+  if (result.external.length) detail += `\n\n⚠ Still loads from the internet (won't work offline):\n${result.external.join('\n')}`;
+  if (result.warnings.length) detail += `\n\nNote:\n${result.warnings.join('\n')}`;
+  const r = dialog.showMessageBoxSync(win, {
+    type: result.external.length || result.warnings.length ? 'warning' : 'info',
+    message: 'Single-file export complete', detail, buttons: ['Reveal in Folder', 'OK'], defaultId: 1,
+  });
+  if (r === 0) shell.showItemInFolder(save.filePath);
+}
+
 // A small modal text prompt (Electron has no built-in one).
 function showPrompt(message, value = '') {
   return new Promise((resolve) => {
@@ -604,9 +702,11 @@ function buildMenu() {
       { label: 'Open in VS Code', accelerator: 'CmdOrCtrl+Shift+C', click: () => openInVSCode() },
       { type: 'separator' },
       { label: 'Export', submenu: [
+        { label: 'Single-file HTML — text to a friend…', click: () => exportSingleFile() },
+        { type: 'separator' },
         { label: 'Desktop App (this OS)…', click: () => exportGame(process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux') },
         { label: 'Desktop App — all platforms…', click: () => exportGame('all') },
-        { label: 'Mobile (iOS + Android)…', click: () => exportGame('both', true) },
+        { label: 'Mobile app project (iOS + Android)…', click: () => exportGame('both', true) },
       ] },
       { type: 'separator' },
       { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => win.reload() },
