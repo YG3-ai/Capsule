@@ -60,32 +60,40 @@ rsync -a \
 cp "$HERE/main.js" "$STAGE/main.js"
 cp "$HERE/package.json" "$STAGE/package.json"
 
-# --- vendor three.js for offline use (build-time only; source capsule untouched)
+# --- vendor three.js for offline use, ONLY if the game uses a three CDN --------
+# (build-time only; source capsule untouched). Framework-agnostic: a Vite/plain
+# game has no three importmap, so this is skipped and the staged files ship as-is.
 if [ "$VENDOR_THREE" = "1" ]; then
   THREE_VERSION="$(grep -oE 'three@[0-9]+\.[0-9]+\.[0-9]+' "$STAGE/index.html" | head -1 | cut -d@ -f2)"
-  THREE_VERSION="${THREE_VERSION:-0.171.0}"
-  echo "▸ vendoring three@$THREE_VERSION for offline use…"
-  VDIR="$STAGE/vendor/three"
-  mkdir -p "$VDIR/addons"
-  TMP="$(mktemp -d)"
-  ( cd "$TMP" && npm pack "three@$THREE_VERSION" --silent >/dev/null )
-  TGZ="$(ls "$TMP"/three-*.tgz)"
-  tar -xzf "$TGZ" -C "$TMP"
-  # Copy all build .js files — modern three.module.js re-exports from three.core.js,
-  # so the entry alone isn't enough; bring its siblings along.
-  cp "$TMP/package/build/"*.js "$VDIR/"
-  cp -R "$TMP/package/examples/jsm/." "$VDIR/addons/"
-  rm -rf "$TMP"
-  # rewrite the importmap's CDN URLs -> local vendor paths (importmap values are
-  # double-quoted, so [^"]* safely matches the whole URL regardless of CDN host)
-  sed -i '' -E \
-    -e 's#https?://[^"]*three@[0-9.]+/build/three\.module\.js#./vendor/three/three.module.js#g' \
-    -e 's#https?://[^"]*three@[0-9.]+/examples/jsm/#./vendor/three/addons/#g' \
-    "$STAGE/index.html"
-  if grep -qE 'unpkg\.com|jsdelivr\.net|cdn\.' "$STAGE/index.html"; then
-    echo "  ⚠ a CDN reference still remains in index.html — check its importmap" >&2
+  if [ -z "$THREE_VERSION" ]; then
+    echo "▸ no three.js CDN import found — skipping vendor step (works for any web app / bundled dist)"
   else
-    echo "  ✓ importmap now points at ./vendor/three/ (no CDN at runtime)"
+    echo "▸ vendoring three@$THREE_VERSION for offline use…"
+    VDIR="$STAGE/vendor/three"
+    mkdir -p "$VDIR/addons"
+    TMP="$(mktemp -d)"
+    ( cd "$TMP" && npm pack "three@$THREE_VERSION" --silent >/dev/null )
+    TGZ="$(ls "$TMP"/three-*.tgz)"
+    tar -xzf "$TGZ" -C "$TMP"
+    # Copy all build .js files — modern three.module.js re-exports from three.core.js,
+    # so the entry alone isn't enough; bring its siblings along.
+    cp "$TMP/package/build/"*.js "$VDIR/"
+    cp -R "$TMP/package/examples/jsm/." "$VDIR/addons/"
+    rm -rf "$TMP"
+    # rewrite the importmap's CDN URLs -> local vendor paths (importmap values are
+    # double-quoted, so [^"]* safely matches the whole URL regardless of CDN host).
+    # `sed -i.bak` is portable across GNU (Linux / Git Bash) and BSD (macOS) sed;
+    # bare `sed -i ''` is macOS-only and errors elsewhere. Drop the backup after.
+    sed -i.bak -E \
+      -e 's#https?://[^"]*three@[0-9.]+/build/three\.module\.js#./vendor/three/three.module.js#g' \
+      -e 's#https?://[^"]*three@[0-9.]+/examples/jsm/#./vendor/three/addons/#g' \
+      "$STAGE/index.html"
+    rm -f "$STAGE/index.html.bak"
+    if grep -qE 'unpkg\.com|jsdelivr\.net|cdn\.' "$STAGE/index.html"; then
+      echo "  ⚠ a CDN reference still remains in index.html — check its importmap" >&2
+    else
+      echo "  ✓ importmap now points at ./vendor/three/ (no CDN at runtime)"
+    fi
   fi
 fi
 

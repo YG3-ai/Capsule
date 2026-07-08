@@ -55,25 +55,33 @@ rsync -a \
   --exclude 'TODO.md' --exclude 'RUN_COMMAND.md' --exclude 'othernotes.md' \
   "$CAPSULE"/ "$WWW"/
 
-# --- vendor three.js for offline (App Store builds shouldn't fetch a CDN) -----
+# --- vendor three.js for offline, ONLY if the game actually uses a three CDN ---
+# (App Store builds shouldn't fetch a CDN.) Framework-agnostic: a Vite/plain game
+# has no three importmap, so this is skipped and the staged files ship as-is.
 if [ "$VENDOR_THREE" = "1" ]; then
   THREE_VERSION="$(grep -oE 'three@[0-9]+\.[0-9]+\.[0-9]+' "$WWW/index.html" | head -1 | cut -d@ -f2)"
-  THREE_VERSION="${THREE_VERSION:-0.171.0}"
-  echo "▸ vendoring three@$THREE_VERSION for offline use…"
-  VDIR="$WWW/vendor/three"; mkdir -p "$VDIR/addons"
-  TMP="$(mktemp -d)"
-  ( cd "$TMP" && npm pack "three@$THREE_VERSION" --silent >/dev/null )
-  tar -xzf "$(ls "$TMP"/three-*.tgz)" -C "$TMP"
-  cp "$TMP/package/build/"*.js "$VDIR/"
-  cp -R "$TMP/package/examples/jsm/." "$VDIR/addons/"
-  rm -rf "$TMP"
-  sed -i '' -E \
-    -e 's#https?://[^"]*three@[0-9.]+/build/three\.module\.js#./vendor/three/three.module.js#g' \
-    -e 's#https?://[^"]*three@[0-9.]+/examples/jsm/#./vendor/three/addons/#g' \
-    "$WWW/index.html"
-  grep -qE 'unpkg\.com|jsdelivr\.net' "$WWW/index.html" \
-    && echo "  ⚠ a CDN reference remains — check the importmap" >&2 \
-    || echo "  ✓ importmap now points at ./vendor/three/ (offline)"
+  if [ -z "$THREE_VERSION" ]; then
+    echo "▸ no three.js CDN import found — skipping vendor step (works for any web app / bundled dist)"
+  else
+    echo "▸ vendoring three@$THREE_VERSION for offline use…"
+    VDIR="$WWW/vendor/three"; mkdir -p "$VDIR/addons"
+    TMP="$(mktemp -d)"
+    ( cd "$TMP" && npm pack "three@$THREE_VERSION" --silent >/dev/null )
+    tar -xzf "$(ls "$TMP"/three-*.tgz)" -C "$TMP"
+    cp "$TMP/package/build/"*.js "$VDIR/"
+    cp -R "$TMP/package/examples/jsm/." "$VDIR/addons/"
+    rm -rf "$TMP"
+    # `sed -i.bak` is portable across GNU (Linux / Git Bash) and BSD (macOS) sed;
+    # bare `sed -i ''` is macOS-only and errors elsewhere. Drop the backup after.
+    sed -i.bak -E \
+      -e 's#https?://[^"]*three@[0-9.]+/build/three\.module\.js#./vendor/three/three.module.js#g' \
+      -e 's#https?://[^"]*three@[0-9.]+/examples/jsm/#./vendor/three/addons/#g' \
+      "$WWW/index.html"
+    rm -f "$WWW/index.html.bak"
+    grep -qE 'unpkg\.com|jsdelivr\.net' "$WWW/index.html" \
+      && echo "  ⚠ a CDN reference remains — check the importmap" >&2 \
+      || echo "  ✓ importmap now points at ./vendor/three/ (offline)"
+  fi
 fi
 
 # --- capacitor config --------------------------------------------------------

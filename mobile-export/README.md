@@ -1,5 +1,11 @@
 # Capsule → native mobile app (Capacitor)
 
+> **Just want friends to try it on their phones?** You probably don't need this.
+> Use **File → Export → Single-file HTML** — one `.html` you text/AirDrop that
+> opens straight from Files/Safari, no hosting or install. Native (below) is only
+> for shipping a real App Store / Play Store app, and **iOS requires a Mac + Xcode
+> + a paid Apple Developer account** — you can't sideload an app from a file on iOS.
+
 Wraps a capsule (plain HTML/JS/three.js) into native **iOS** and **Android** apps. Capacitor is
 framework-agnostic — it wraps any web app, so plain three.js works. npm lives only here; the game
 stays dependency-free. (Games already *play* in any mobile browser — this is for shipping a real app.)
