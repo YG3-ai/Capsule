@@ -100,6 +100,8 @@ so you just finish the sentence — *"…make a sprite like this one."*
 
 ![A Mosaic moodboard of enemy concept art with direction notes](docs/media/04-mosaic.png)
 
+*Example board using concept art from **Iron Abyss** (© OTR HVN), shown for illustration.*
+
 Open Mosaic with no project (`⌘⇧M`) to start **design-first**: collect references, then spin up an
 empty game and build straight from them. It's all plain files in `mosaic/` — and it never ships
 inside the exported game.

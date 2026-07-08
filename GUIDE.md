@@ -296,6 +296,8 @@ storyboards, group them into boards, and point the AI at them.
 
 ![A Mosaic moodboard of enemy concept art with direction notes](docs/media/04-mosaic.png)
 
+*Example board using concept art from **Iron Abyss** (© OTR HVN).*
+
 - **Open it** from the editor (the `❏` button), the play bar, the welcome screen, or `⌘⇧M`.
 - **Add references** by dragging image files straight onto the canvas (they're copied into
   `mosaic/<board>/`), or with **＋ Image / Note / Link**. Make as many boards as you like — one

@@ -206,9 +206,21 @@ async function openProject(dir, { launchCode = true } = {}) {
   if (launchCode) showAI();   // AI box is docked by default; VS Code stays a manual action
 }
 
-// Mobile projects open at a phone viewport so you design for the real screen.
+// Mobile is previewed INSIDE the editor — the viewport is framed to a phone (the overlay does this
+// automatically for mobile projects), so the app window stays a comfortable desktop size. Here we
+// only recover from any old phone-shrunk window left by a previous version.
 function applyPlatformViewport(dir) {
-  if (readMeta(dir).platform === 'mobile') setViewport(390, 844);
+  if (!win) return;
+  const [w, h] = win.getContentSize();
+  if (w < 1000 || h < 700) { win.setContentSize(1360, 860); win.center(); }
+}
+
+// Drive the editor's in-viewport device frame (phone / tablet / null=fit). Works in edit mode,
+// where the overlay is attached; a no-op in Play mode.
+function previewDevice(key) {
+  if (!win) return;
+  const arg = key ? `'${key}'` : 'null';
+  win.webContents.executeJavaScript(`window.capsule && window.capsule.editor && window.capsule.editor.setDevice(${arg})`).catch(() => {});
 }
 
 // Flip the open game between edit mode (?edit, overlay) and play mode (real game).
@@ -557,11 +569,12 @@ function buildMenu() {
       { type: 'separator' },
       { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => win.reload() },
     ] },
-    { label: 'Viewport', submenu: [
-      { label: 'Desktop', accelerator: 'CmdOrCtrl+1', click: () => setViewport(1280, 800) },
-      { label: 'Phone — 390 × 844', accelerator: 'CmdOrCtrl+2', click: () => setViewport(390, 844) },
-      { label: 'Phone landscape — 844 × 390', click: () => setViewport(844, 390) },
-      { label: 'Tablet — 820 × 1180', accelerator: 'CmdOrCtrl+3', click: () => setViewport(820, 1180) },
+    { label: 'Preview', submenu: [
+      { label: 'Fit to window', accelerator: 'CmdOrCtrl+1', click: () => previewDevice(null) },
+      { label: 'Phone — 390 × 844', accelerator: 'CmdOrCtrl+2', click: () => previewDevice('phone') },
+      { label: 'Tablet — 820 × 1180', accelerator: 'CmdOrCtrl+3', click: () => previewDevice('tablet') },
+      { type: 'separator' },
+      { label: 'Fit window to editor', click: () => { if (win) { win.setContentSize(1360, 860); win.center(); } } },
     ] },
     { role: 'viewMenu' }, { role: 'windowMenu' },
   ];
@@ -598,6 +611,33 @@ function createWindow() {
       bar.appendChild(mk('⌂ Welcome', () => host.welcome && host.welcome()));
       document.body.appendChild(bar);
     })();`).catch(() => {});
+
+    // Mobile projects: frame the running preview to a phone too (matches the editor). Self-contained
+    // — no overlay in Play mode, so this drives window.capsule's renderer/camera directly.
+    if (readMeta(projectDir || '').platform === 'mobile') {
+      win.webContents.executeJavaScript(`(() => {
+        if (window.__capMobileFrame) return; window.__capMobileFrame = 1;
+        const W = 390, H = 844;
+        const ready = () => window.capsule && window.capsule.renderer && window.capsule.camera && window.capsule.renderer.domElement;
+        const start = () => {
+          const cap = window.capsule, cv = cap.renderer.domElement, orig = cap.renderer.setSize.bind(cap.renderer);
+          let frame = null;
+          const lb = document.createElement('div');
+          lb.style.cssText = 'position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(130% 130% at 50% 28%,#0c0c11,#050506)';
+          document.body.appendChild(lb);
+          const box = () => { const pad = 24, aw = Math.max(140, innerWidth - pad*2), ah = Math.max(140, innerHeight - pad*2), s = Math.min(aw/W, ah/H); return { w: Math.round(W*s), h: Math.round(H*s) }; };
+          const place = () => { const b = box(); frame = b; cv.style.position='fixed'; cv.style.zIndex='2';
+            cv.style.left = Math.round((innerWidth-b.w)/2)+'px'; cv.style.top = Math.round((innerHeight-b.h)/2)+'px';
+            cv.style.width = b.w+'px'; cv.style.height = b.h+'px'; cv.style.borderRadius='22px';
+            cv.style.boxShadow = '0 0 0 2px rgba(255,255,255,.10),0 0 0 10px #050506,0 40px 90px rgba(0,0,0,.6)';
+            orig(b.w, b.h, false); if (cap.camera.isPerspectiveCamera) { cap.camera.aspect = W/H; cap.camera.updateProjectionMatrix(); } };
+          cap.renderer.setSize = (w,h,u) => { if (frame) orig(frame.w, frame.h, false); else orig(w,h,u); };
+          addEventListener('resize', place); place();
+          (function g(){ if (cap.camera.isPerspectiveCamera){ const a = W/H; if (Math.abs(cap.camera.aspect-a) > 1e-4) { cap.camera.aspect = a; cap.camera.updateProjectionMatrix(); } } requestAnimationFrame(g); })();
+        };
+        (function wait(){ if (ready()) start(); else setTimeout(wait, 120); })();
+      })();`).catch(() => {});
+    }
   });
 }
 

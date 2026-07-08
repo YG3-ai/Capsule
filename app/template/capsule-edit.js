@@ -113,7 +113,7 @@ export function initCapsuleEditor(capsule) {
   // ── UI ────────────────────────────────────────────────
   const ui = injectUI();
   const { hud, list, saveBtn, modeBtns, sceneSel, layerSel, undoBtn, redoBtn, playBtn, homeBtn, codeBtn,
-          mosaicBtn, addBtn, frameBtn, flyBtn, aiBtn, meshBtn, pinsBtn, matEl, colInput, texName, texRepBtn, texDelBtn,
+          mosaicBtn, addBtn, frameBtn, flyBtn, aiBtn, meshBtn, pinsBtn, deviceBtn, matEl, colInput, texName, texRepBtn, texDelBtn,
           pop, ask, inspEl, inspInputs } = ui;
   // The editor has its own HUD — hide the game's top-left HUD so they don't overlap.
   const gameHud = document.getElementById('hud'); if (gameHud) gameHud.style.display = 'none';
@@ -361,6 +361,10 @@ export function initCapsuleEditor(capsule) {
   // ── selection ─────────────────────────────────────────
   const ray = new THREE.Raycaster();
   const ptr = new THREE.Vector2();
+  // Normalized device coords from the CANVAS rect (not the window) — so clicks map correctly
+  // even when the viewport is framed to a phone/tablet in device-preview mode.
+  const setPtr = (e) => { const r = renderer.domElement.getBoundingClientRect();
+    ptr.x = ((e.clientX - r.left) / r.width) * 2 - 1; ptr.y = -((e.clientY - r.top) / r.height) * 2 + 1; };
   let down = null;
   renderer.domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
   renderer.domElement.addEventListener('pointerup', (e) => {
@@ -368,8 +372,7 @@ export function initCapsuleEditor(capsule) {
     const moved = Math.hypot(e.clientX - down[0], e.clientY - down[1]);
     down = null;
     if (moved > 4 || gizmo.dragging) return;
-    ptr.x = (e.clientX / window.innerWidth) * 2 - 1;
-    ptr.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    setPtr(e);
     ray.setFromCamera(ptr, camera);
     if (pinMode) {   // reference-pin mode — click a pin to remove it, else drop one on the surface
       const pinHit = ray.intersectObjects(refPins.map((p) => p.obj), false)[0];
@@ -763,7 +766,7 @@ export function initCapsuleEditor(capsule) {
   if (window.capsuleHost && window.capsuleHost.toggleAI) aiBtn.onclick = () => window.capsuleHost.toggleAI();
   else aiBtn.style.display = 'none';
   renderer.domElement.addEventListener('dblclick', (e) => {
-    ptr.x = (e.clientX / window.innerWidth) * 2 - 1; ptr.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    setPtr(e);
     ray.setFromCamera(ptr, camera);
     const objs = capsule.editable.map((e) => e.obj);
     const hit = ray.intersectObjects(objs, true)[0];
@@ -884,7 +887,61 @@ export function initCapsuleEditor(capsule) {
   setTimeout(reapplyMeshEdits, 800);   // ...again for meshes the game builds async
   refreshList();             // populate the panel immediately on attach
   writeSelected();
-  capsule.editor = { select, frameObject, setMode, save, previewLayer, buildLayer, undo, redo, applyInspector,
+  // ── Device preview — frame the game viewport to a phone/tablet without resizing the window ──
+  // The game keeps rendering; we clamp its canvas to the device box, letterbox the rest, and hold
+  // the camera at the device aspect. Editing still works because raycasts use the canvas rect.
+  const DEVICES = { phone: { w: 390, h: 844, label: 'Phone' }, tablet: { w: 820, h: 1180, label: 'Tablet' } };
+  let device = null;
+  const _origSetSize = renderer.setSize.bind(renderer);
+  let _frame = null, _letterbox = null, _canvasStyle0 = null;
+  function _deviceBox() {
+    const top = 92, pad = 26;
+    const availW = Math.max(140, window.innerWidth - pad * 2);
+    const availH = Math.max(140, window.innerHeight - top - pad);
+    const s = Math.min(availW / device.w, availH / device.h);
+    return { w: Math.round(device.w * s), h: Math.round(device.h * s), top };
+  }
+  function _applyDevice() {
+    const cv = renderer.domElement, b = _deviceBox();
+    _frame = { w: b.w, h: b.h };
+    if (!_letterbox) {
+      _letterbox = document.createElement('div');
+      _letterbox.style.cssText = 'position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(130% 130% at 50% 28%,#0c0c11,#050506)';
+      document.body.appendChild(_letterbox);
+    }
+    _letterbox.style.display = 'block';
+    cv.style.position = 'fixed'; cv.style.zIndex = '2';
+    cv.style.left = Math.round((window.innerWidth - b.w) / 2) + 'px';
+    cv.style.top = Math.round(b.top + (window.innerHeight - b.top - b.h) / 2) + 'px';
+    cv.style.width = b.w + 'px'; cv.style.height = b.h + 'px';
+    cv.style.borderRadius = '22px';
+    cv.style.boxShadow = '0 0 0 2px rgba(255,255,255,.10),0 0 0 10px #050506,0 40px 90px rgba(0,0,0,.6)';
+    _origSetSize(b.w, b.h, false);
+    if (camera.isPerspectiveCamera) { camera.aspect = device.w / device.h; camera.updateProjectionMatrix(); }
+  }
+  function setDevice(key) {
+    const next = (key && DEVICES[key]) ? DEVICES[key] : (key && key.w ? key : null);
+    const cv = renderer.domElement;
+    if (_canvasStyle0 === null) _canvasStyle0 = cv.getAttribute('style') || '';
+    device = next;
+    if (device) _applyDevice();
+    else {
+      cv.setAttribute('style', _canvasStyle0);
+      if (_letterbox) _letterbox.style.display = 'none';
+      window.dispatchEvent(new Event('resize'));   // let the game re-fill the window
+    }
+    if (deviceBtn) { deviceBtn.classList.toggle('on', !!device);
+      deviceBtn.setAttribute('data-tip', device ? ('Preview: ' + device.label + ' — click to cycle') : 'Preview device frame (phone / tablet)'); }
+    flash(device ? ('preview: ' + device.label) : 'preview: fit to window');
+  }
+  // Clamp the game's own resize while framed, and keep the camera locked to the device aspect.
+  renderer.setSize = (w, h, u) => { if (device && _frame) _origSetSize(_frame.w, _frame.h, false); else _origSetSize(w, h, u); };
+  addEventListener('resize', () => { if (device) _applyDevice(); });
+  (function _aspectGuard() { if (device && camera.isPerspectiveCamera) { const a = device.w / device.h; if (Math.abs(camera.aspect - a) > 1e-4) { camera.aspect = a; camera.updateProjectionMatrix(); } } requestAnimationFrame(_aspectGuard); })();
+  const _deviceCycle = () => setDevice(!device ? 'phone' : device.label === 'Phone' ? 'tablet' : null);
+  if (deviceBtn) deviceBtn.onclick = _deviceCycle;
+
+  capsule.editor = { select, frameObject, setMode, save, previewLayer, buildLayer, undo, redo, applyInspector, setDevice,
     addPrimitive, addScene: addSceneFn, addState: addStateFn, addAsset, duplicate: duplicateSelected, remove: deleteSelected, frameAll,
     byId, list: listEditables, setTransform, lookingAt, clearPins, selectById: (id) => select(byId(id), true),
     get scene() { return editScene; }, get layer() { return editLayer; },
@@ -892,6 +949,9 @@ export function initCapsuleEditor(capsule) {
     setLayer(l) { editLayer = l; layerSel.value = l; previewLayer(); },
     get selected() { return selected; } };
   console.log('[capsule] editor attached —', capsule.editable.length, 'editable, scene', editScene);
+  // Mobile projects default to the phone frame so you design against the real screen.
+  fetch('./capsule.json', { cache: 'no-store' }).then((r) => r.ok ? r.json() : null)
+    .then((d) => { if (d && d.meta && d.meta.platform === 'mobile') setDevice('phone'); }).catch(() => {});
 }
 
 // ── overlay DOM + styles ────────────────────────────────
@@ -1007,6 +1067,7 @@ function injectUI() {
     `<div class="sep"></div><button id="cap-add">＋ Add</button>` +
     `<div class="sep"></div><button class="ic" id="cap-mesh" data-tip="Edit any mesh — walls, floors, structure">▦</button>` +
     `<button class="ic" id="cap-pins" data-tip="Reference pins — drop to point the AI at things · click a pin to remove · ⇧-click to clear all">◎</button>` +
+    `<button class="ic" id="cap-device" data-tip="Preview device frame (phone / tablet)">▯</button>` +
     `<button class="ic" id="cap-frame" data-tip="Frame · F">⛶</button><button class="ic" id="cap-fly" data-tip="Fly · W A S D / Q E">✥</button>` +
     `<button class="ic" id="cap-undo" data-tip="Undo · ⌘Z">↶</button><button class="ic" id="cap-redo" data-tip="Redo · ⌘⇧Z">↷</button>` +
     `<div class="sep"></div><button class="ic" id="cap-home" data-tip="Welcome screen">⌂</button><button class="ic" id="cap-mosaic" data-tip="Mosaic · moodboard">❏</button><button class="ic" id="cap-code" data-tip="Open in VS Code">&lt;/&gt;</button><button class="ic" id="cap-ai" data-tip="AI box · ⌘J">✨</button>` +
@@ -1056,6 +1117,7 @@ function injectUI() {
     mosaicBtn: bar.querySelector('#cap-mosaic'),
     frameBtn: bar.querySelector('#cap-frame'), flyBtn: bar.querySelector('#cap-fly'),
     aiBtn: bar.querySelector('#cap-ai'), meshBtn: bar.querySelector('#cap-mesh'), pinsBtn: bar.querySelector('#cap-pins'),
+    deviceBtn: bar.querySelector('#cap-device'),
     matEl: insp.querySelector('#cap-mat'), colInput: insp.querySelector('#cap-col'),
     texName: insp.querySelector('#cap-texname'), texRepBtn: insp.querySelector('#cap-tex-rep'),
     texDelBtn: insp.querySelector('#cap-tex-del'),
