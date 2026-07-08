@@ -250,8 +250,12 @@ function hasClaudeSession(dir) {
 }
 function agentCommandFor(dir) {
   const base = agentCommand();
-  if (/^claude(\s|$)/.test(base) && !/(--continue|--resume|\s-c\b|\s-r\b)/.test(base) && dir && hasClaudeSession(dir)) {
-    return base.replace(/^claude/, 'claude --continue');   // resume the existing chat
+  // For Claude Code, TRY to resume this project's conversation but fall back to a
+  // fresh session if there isn't one — `claude --continue` errors out (and exits)
+  // when there's no prior conversation, so chain `|| <base>` to recover. `||`
+  // works in both cmd.exe and POSIX shells. (No fragile session-file detection.)
+  if (/^claude(\s|$)/.test(base) && !/(--continue|--resume|\s-c\b|\s-r\b)/.test(base)) {
+    return base.replace(/^claude/, 'claude --continue') + ' || ' + base;
   }
   return base;
 }
