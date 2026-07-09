@@ -409,6 +409,38 @@ async function exportSingleFile() {
   if (r === 0) shell.showItemInFolder(save.filePath);
 }
 
+// ── Publish to GitHub ────────────────────────────────────────────────────────
+// Create a GitHub repo from the open project and push it — via the gh CLI, which
+// owns auth so Capsule never handles tokens. Runs the git+gh steps in a terminal
+// window (the native shell) so the user watches progress and sees any "run
+// gh auth login" hint. The one-liner uses only && , || and ( ) grouping, which
+// cmd.exe, zsh and bash all share — so no bash dependency on Windows.
+async function publishToGitHub() {
+  if (!projectDir) { dialog.showMessageBox(win, { message: 'Open a project first.' }); return; }
+  const suggested = (path.basename(projectDir).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')) || 'my-game';
+  const raw = await showPrompt('Name for the new GitHub repo:', suggested);
+  if (!raw) return;
+  const name = raw.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!name) { dialog.showMessageBox(win, { type: 'error', message: 'That name has no usable characters.' }); return; }
+  const choice = dialog.showMessageBoxSync(win, {
+    type: 'question', message: `Publish “${name}” to GitHub?`,
+    detail: 'Creates the repo and pushes this project using the GitHub CLI (gh).\n\nNeeds gh installed and signed in — if it isn\'t, the terminal will tell you to run:  gh auth login',
+    buttons: ['Private repo', 'Public repo', 'Cancel'], cancelId: 2, defaultId: 0,
+  });
+  if (choice === 2) return;
+  const vis = choice === 0 ? 'private' : 'public';
+  const cmd =
+    'git init && git add -A && ' +
+    '(git diff --cached --quiet || git commit -m "Initial commit") && ' +
+    `gh repo create "${name}" --${vis} --source=. --remote=origin --push`;
+  const w = new BrowserWindow({
+    width: 840, height: 540, backgroundColor: '#0A0A0E',
+    title: 'Capsule · Publish to GitHub',
+    webPreferences: { nodeIntegration: true, contextIsolation: false },
+  });
+  w.loadFile('terminal.html', { query: { dir: projectDir, cmd } });
+}
+
 // A small modal text prompt (Electron has no built-in one).
 function showPrompt(message, value = '') {
   return new Promise((resolve) => {
@@ -708,6 +740,7 @@ function buildMenu() {
         { label: 'Desktop App — all platforms…', click: () => exportGame('all') },
         { label: 'Mobile app project (iOS + Android)…', click: () => exportGame('both', true) },
       ] },
+      { label: 'Publish to GitHub…', click: () => publishToGitHub() },
       { type: 'separator' },
       { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => win.reload() },
     ] },

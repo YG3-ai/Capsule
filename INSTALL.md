@@ -66,6 +66,15 @@ beyond the built-in three.js templates:
   the game lazy-load its edit overlay only when `?edit` is present so it never
   ships in production.
 
+## Publishing to GitHub (File → Publish to GitHub…)
+
+One click creates a private (or public) GitHub repo from the open project and
+pushes it. It uses the **GitHub CLI (`gh`)**, so Capsule never handles tokens —
+`gh` owns the auth. First time only: install `gh` (https://cli.github.com/) and
+run `gh auth login` once; if you skip it, the terminal window says exactly that.
+Works on Windows/macOS/Linux (the git+gh steps use only shell-portable operators,
+no bash dependency).
+
 ## Exporting & sharing a game (File → Export)
 
 - **Single-file HTML — text to a friend** (easiest). Inlines the whole game
